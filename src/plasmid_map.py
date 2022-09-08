@@ -2,12 +2,17 @@
 from Bio import SeqIO
 import numpy as np
 import pandas as pd
-
-
+from dataclasses import dataclass
+"""
+This script creates a class that holds relevant information about the gene (e.g. sequence, translated peptide, codon positions) extracted from the GenBank file provided.
+"""
+@dataclass
 class Gene:
-    def __init__(self, genbank_path, gene_name: str):
-        self.gbk_record = SeqIO.read(genbank_path, "gb")
-        self.gene_name = gene_name
+    gbk_record: str
+    gene_name: str
+    
+    def __post_init__(self):
+        self.gbk_record = SeqIO.read(self.gbk_record, "gb")
         if any(f.type == "CDS" for f in self.gbk_record.features):
             self.cds = self.get_feature_type(self.gbk_record, "CDS")
             self.cds_seq = self.cds.extract(self.gbk_record.seq)
@@ -20,8 +25,8 @@ class Gene:
                 self.cds_seq[i : i + 3] for i in range(0, len(self.cds_seq), 3)
             ]
             self.cds_codon_dict = {idx: value for idx, value in enumerate(cds_codons)}
-
-    def get_feature_type(self, SeqRecord, feature_type):
+            
+    def get_feature_type(self, SeqRecord: SeqIO.SeqRecord, feature_type: str):
         for f in SeqRecord.features:
             if f.type == feature_type:
                 for key, value in f.qualifiers.items():
@@ -29,21 +34,26 @@ class Gene:
                         return f
 
 
+@dataclass
 class TEM1_gene(Gene):
-    def __init__(self, genbank_path, gene_name: str = "blaTEM-1"):
-        super().__init__(genbank_path, gene_name)
-
+    """
+    Beta-lactamases have an atypical residue numbering system created to standardize position numbers across all different classes of beta-lactamases. This class defines that numbering scheme. This class also adds additional information specifically relevant to our TEM-1 saturation mutagenesis library. This class defines the amino acid positions covered by each sublibrary and the mature protein with the signal peptide removed, as the signal sequence is not covered by the library.
+    """
+    gene_name: str = "blaTEM-1"
+    
+    def __post_init__(self):
+        super().__post_init__()
         self.mat_peptide = self.get_feature_type(self.gbk_record, "mat_peptide")
-        self.numbering_scheme = self.get_numbering_scheme()
+        self.ambler_numbering = self.get_ambler_numbering()
         self.sublibrary_positions = self.get_sublibrary_positions()
-
-    def get_numbering_scheme(self):
+        
+    def get_ambler_numbering(self):
         # beta-lactamase residue numbering is irregular for each protein
         # see Ambler et al. 1991
-        numbering_scheme = (
+        ambler_numbering = (
             list(range(3, 239)) + list(range(240, 253)) + list(range(254, 292))
         )
-        return numbering_scheme
+        return ambler_numbering
 
     def get_sublibrary_positions(self):
         sublibrary_names = [

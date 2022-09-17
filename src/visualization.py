@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-from Bio.Data import IUPACData
 import matplotlib.pyplot as plt
-import mplcursors
 import numpy as np
 import pandas as pd
+import seaborn as sns
+from Bio.Data import IUPACData
 from matplotlib import colors
 from matplotlib.offsetbox import AnchoredText
 from scipy.stats import norm
@@ -33,6 +33,7 @@ def respine(ax):
     for _, spine in ax.spines.items():
         spine.set_visible(True)
         spine.set_edgecolor("darkslategray")
+        spine.set_lw(0.4)
 
 
 def histogram_mutation_counts(SequencingData):
@@ -98,95 +99,6 @@ def heatmap_masks(gene):
     return df_mask_WT, df_mask_annot
 
 
-def heatmap_gridspec_layout(gene, num_plots, orientation="vertical", grid=False):
-    columns = list(IUPACData.protein_letters + "*∅")
-
-    tick_positions = np.arange(len(gene.cds_translation), step=15)
-
-    num_rows = 1
-    num_columns = num_plots + 1
-    height = 25
-    width = 2.5 * num_plots + 0.25
-    width_ratios = [1] * num_plots + [0.1]
-    figsize = (width, height)
-    fig = plt.figure(figsize=figsize, constrained_layout=True)
-
-    # transpose the gridspec
-    if orientation == "horizontal":
-        num_rows, num_columns = num_columns, num_rows
-        width, height = height, width
-        height_ratios = width_ratios
-        fig.set_figheight(height)
-        fig.set_figwidth(width)
-        gs = fig.add_gridspec(num_rows, num_columns, height_ratios=height_ratios)
-
-    else:
-        gs = fig.add_gridspec(num_rows, num_columns, width_ratios=width_ratios)
-
-    axes = []
-    for i in range(num_plots):
-        if i >= 1:
-            axes.append(plt.subplot(gs[i], anchor="NW", sharey=axes[0], sharex=axes[0]))
-        else:
-            axes.append(plt.subplot(gs[i], anchor="NW"))
-
-    cbar_ax = plt.subplot(gs[num_plots], label="colorbar", aspect=3, anchor="NW")
-
-    # adjust the colorbar shape and adjust ticklabel positions
-    if orientation == "horizontal":
-        cbar_ax.set_aspect(0.35)
-        for i, ax in enumerate(axes):
-            fig.canvas.draw()
-            ax.set_yticks(np.arange(22), labels=columns, fontsize=6)
-            ax.set_xticks(
-                tick_positions,
-                fontsize=8,
-                fontweight="bold",
-            )
-            ax.tick_params(axis="both", left=False, bottom=False, labelbottom=False)
-            if i == 0:
-                ax.tick_params(axis="x", labeltop=True, rotation=90)
-
-            # draw grid
-            if grid:
-                ax.set_yticks(np.arange(23) - 0.5, minor=True)
-                ax.set_xticks(np.arange(len(gene.cds_translation) + 1) - 0.5, minor=True)
-                ax.tick_params(which="minor", left=False, bottom=False)
-                ax.grid(which="minor", color="lightgray")
-
-        cbar_ax.tick_params(left=False, bottom=False, labelleft=False)
-
-    else:
-        for i, ax in enumerate(axes):
-            # fig.canvas.draw()
-            ax.set_yticks(
-                tick_positions[::-1],
-                fontsize=8,
-                fontweight="bold",
-            )
-            ax.set_xticks(np.arange(22), labels=columns, fontsize=6)
-            ax.tick_params(axis="both", left=False, bottom=False, labelleft=False)
-            ax.tick_params(axis="x", labelrotation=0, pad=0)
-            if i == 0:
-                ax.tick_params(axis="y", labelleft=True)
-
-            # draw grid
-            # ax.set_xticks(np.arange(23) - 0.5, minor=True)
-            # ax.set_yticks(np.arange(len(gene.cds_translation)) - 0.5, minor=True)
-            ax.tick_params(which="minor", left=False, bottom=False)
-            ax.grid(which="minor", color="lightgray")
-
-        cbar_ax.tick_params(
-            left=False,
-            bottom=False,
-            labelleft=False,
-            labelbottom=False,
-            labelright=True,
-        )
-
-    return fig
-
-
 def heatmap_missing_mutations(df, ax=None, cbar_ax=None, orientation="vertical"):
     """
     Plot a heatmap showing positions in the library where mutants are missing
@@ -238,150 +150,123 @@ def heatmap_missing_mutations(df, ax=None, cbar_ax=None, orientation="vertical")
     return ax
 
 
-def heatmap_raw_counts(df, ax=None, cbar_ax=None, orientation="vertical"):
-    if ax is None:
-        ax = plt.subplot()
-    with np.errstate(divide="ignore"):
-        df_log_counts = df.where(df.lt(1), np.log10(df))
-    if orientation == "horizontal":
-        df_log_counts = df_log_counts.T
-    im = ax.imshow(df_log_counts, cmap="Blues")
+def heatmap_wrapper(df: pd.DataFrame, dataset: str, ax=None, cbar=False, cbar_ax=None, cbar_kws=None, vmin=-2, vmax=2):
+    """
+    Function wrapper for preferred heatmap aesthetic settings
 
-    # add colorbar
-    cbar = plt.colorbar(
-        im,
-        cax=cbar_ax,
-        orientation=orientation,
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Matrix to be plotted
+    ax : matplotlib.Axes, optional
+        Axes on which to draw the data, by default None
+    cbar : bool, optional
+        Whether to draw a colorbar or not, by default False
+    cbar_ax : matplotlib.Axes, optional
+        Axes on which to draw the colorbar, by default None
+    cbar_kws : _type_, optional
+        *kwargs passed to matplotlib.colorbar(), by default None
+
+    Returns
+    -------
+    h : matplotlib.Axes
+        Axes object with the heatmap
+    """
+    cbar_kws_dict = {"use_gridspec": True}
+    if cbar_kws:
+        cbar_kws_dict.update(cbar_kws)
+    if dataset == "counts":
+        with np.errstate(divide="ignore"):
+            df = df.where(df.lt(1), np.log10(df))
+            cmap = "Blues"
+            vmin = None
+            vmax = None
+    elif dataset == "fitness":
+        cmap = "vlag"
+    h = sns.heatmap(
+        df,
+        square=True,
+        xticklabels=10,
+        yticklabels=1,
+        cbar=cbar,
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+        linecolor="slategray",
+        edgecolor="darkslategray",
+        linewidths=0.2,
+        clip_on=False,
+        ax=ax,
+        cbar_ax=cbar_ax,
+        cbar_kws=cbar_kws_dict
     )
-    cbar.ax.tick_params(bottom=False, right=False)
-    return ax
+    h.tick_params(axis="x", labelrotation=90, labelbottom=False)
+    h.tick_params(axis="y", labelrotation=0)
+    respine(h)
+    return h
 
 
-def heatmap_fitness(
-    gene,
-    df,
-    ax=None,
-    cbar_ax=None,
-    cmap="bwr",
-    vmin=-2.0,
-    vmax=2.0,
-    cbar_kws={},
-    orientation="vertical",
-):
-    if ax is None:
-        ax = plt.subplot()
+def heatmap_draw(df_dict: dict, dataset: str, vmin=-2, vmax=2):
+    """
+    Draw a heatmap of a dataset
+    # TODO: consider re-adding figure to make a missing chart, but perhaps not really necessary
+    # TODO: re-adjust for option of plotting vertically
+    # TODO: add annotations for wild-type residues
 
-    df_mask_WT, df_mask_annot = heatmap_masks(gene)
-    df_mask_WT = df_mask_WT.loc[df.index]
-    df_mask_annot = df_mask_annot.loc[df.index]
+    Parameters
+    ----------
+    df_dict : dict
+        Sample names with datatables
+    dataset : str
+        Whether to draw a heatmap for raw (log-transformed) counts or fitness data
+    vmin : int, optional
+        For fitness data, vmin parameter passed to sns.heatmap, by default -2
+    vmax : int, optional
+        For fitness data, vmax parameter passed to sns.heatmap, by default 2
 
-    if orientation == "horizontal":
-        df = df.T
-        df_mask_WT = df_mask_WT.T
-        df_mask_annot = df_mask_annot.T
-    im = ax.imshow(df, cmap=cmap, vmin=vmin, vmax=vmax, label="im", zorder=1)
-    ax.set_facecolor("black")
-
-    # annotations
-    mask = np.ma.masked_where(~df_mask_WT, np.zeros(df_mask_WT.shape))
-    # set background for WT to gray
-    im_annot = ax.imshow(mask, cmap=colors.ListedColormap(["slategray"]))
-    # add slash marks
-    for i in range(df_mask_annot.shape[0]):
-        for j in range(df_mask_annot.shape[1]):
-            if df_mask_annot.iloc[i, j] == "/":
-                im_annot.axes.text(
-                    j,
-                    i,
-                    "/",
-                    color="white",
-                    ha="center",
-                    va="center",
-                    fontsize=7,
-                    clip_on=True,
-                )
-
-    # add colorbar
-    cbar = plt.colorbar(
-        im,
-        cax=cbar_ax,
-        orientation=orientation,
-    )
-    cbar.ax.tick_params(bottom=False, right=False)
-
-    return ax
-
-
-def draw_heatmap_figure(
-    gene, SequencingData, figure_type, orientation="vertical", add_cursor=False
-):
-    treatments = [x for x in SequencingData.treatments if "UT" not in x]
-    nPlots = len(treatments)
-
-    fig = heatmap_gridspec_layout(gene, nPlots, orientation=orientation)
-
-    if figure_type == "heatmap_missing":
-        plt.close(fig)
-        fig = heatmap_gridspec_layout(gene, 1, orientation=orientation)
-        for sample, counts in SequencingData.counts.items():
-            if "UT" not in sample:
-                continue
-            else:
-                ax = heatmap_missing_mutations(
-                    counts,
-                    ax=fig.axes[0],
-                    cbar_ax=fig.axes[-1],
-                    orientation=orientation,
-                )
-
-                # add axes title
-                if orientation == "horizontal":
-                    ax.set_ylabel(
-                        sample, fontsize=18, fontweight="semibold", labelpad=0
-                    )
-                else:
-                    ax.set_title(sample, fontsize=18, fontweight="semibold")
-
-    elif figure_type == "heatmap_counts":
-        plt.close()
-        fig = heatmap_gridspec_layout(gene, nPlots + 1, orientation=orientation)
-        fig.suptitle(
-            "Raw counts of mutations ($log_{10}$)", fontsize=20, fontweight="bold"
-        )
-        for i, sample in enumerate(SequencingData.counts):
-            df = SequencingData.counts[sample]
-            ax = heatmap_raw_counts(
-                df, ax=fig.axes[i], cbar_ax=fig.axes[-1], orientation=orientation
-            )
-            # add axes title
-            if orientation == "horizontal":
-                ax.set_ylabel(sample, fontsize=18, fontweight="semibold", labelpad=0)
-            else:
-                ax.set_title(sample, fontsize=18, fontweight="semibold")
-
-    elif figure_type == "heatmap_fitness":
-        fig.suptitle("Fitness effects of mutations", fontsize=20, fontweight="bold")
-        for i, sample in enumerate(SequencingData.fitness):
-            df = SequencingData.fitness[sample]
-            ax = heatmap_fitness(
-                gene, df, ax=fig.axes[i], cbar_ax=fig.axes[-1], orientation=orientation
-            )
-
-            # add axes title
-            if orientation == "horizontal":
-                ax.set_ylabel(sample, fontsize=18, fontweight="semibold", labelpad=0)
-            else:
-                ax.set_title(sample, fontsize=18, fontweight="semibold")
-
-            if add_cursor:
-                # add a cursor that displays position-mutation on click
-                cursor = mplcursors.cursor()
-
-                @cursor.connect("add")
-                def on_click(sel):
-                    i, j = sel.index
-                    arrData = sel.artist.get_array()
-                    dValue = round(arrData[i, j], 3)
-                    sel.annotation.set_text(f"{df.index[i]}{df.columns[j]}\n[{dValue}]")
-
+    Returns
+    -------
+    fig
+        matplotlib.Figure
+    """
+    with plt.style.context("heatmap.mplstyle"):
+        num_plots = len(df_dict)
+        num_rows = num_plots + 1
+        num_columns = 1
+        height_ratios = [1] * num_plots + [0.1]
+        
+        fig = plt.figure(constrained_layout=True)
+        if dataset == "counts":
+            fig.suptitle("Raw counts of mutations ($log_{10}$)")
+        elif dataset == "fitness":
+            fig.suptitle("Fitness values")
+        
+        fig.set_figwidth(5)
+        gs = fig.add_gridspec(num_rows, num_columns, height_ratios=height_ratios)
+        cbar_ax = plt.subplot(gs[-1], aspect=0.3, anchor="NW", label="colorbar")
+        
+        # * plot each data one by one
+        for i, (sample, data) in enumerate(df_dict.items()):
+            ax = plt.subplot(gs[i], label=sample, anchor="NW")
+            # * function-provided styling for heatmap
+            if dataset == "counts":
+                heatmap_wrapper(data.T, dataset=dataset, ax=ax, cbar=True, cbar_ax=cbar_ax, cbar_kws={"orientation": "horizontal"})
+            elif dataset =="fitness":
+                heatmap_wrapper(data.T, dataset=dataset, ax=ax, cbar=True, cbar_ax=cbar_ax, cbar_kws={"orientation": "horizontal"}, vmin=vmin, vmax=vmax)
+            ax.set_ylabel(sample)
+            # * add x-axis (position) labels to top subplot
+            if i == 0:
+                ax.tick_params(axis="x", labeltop=True)
+            # * share the x- and y-axis of the data plots
+            elif i >= 1:
+                ax.sharex(fig.axes[1])
+                ax.sharey(fig.axes[1])
+        # * adjust colorbar aesthetics
+        cbar_ax.spines["outline"].set_visible(True)
+        cbar_ax.spines["outline"].set_lw(0.4)
+        # * calculate the minimum figure height that keeps aspect ratio of heatmaps
+        height = 0
+        for ax in fig.axes:
+            height += ax.get_tightbbox(fig.canvas.get_renderer()).transformed(fig.dpi_scale_trans.inverted()).height + 0.1
+        fig.set_figheight(height)
     return fig

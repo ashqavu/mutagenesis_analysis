@@ -358,17 +358,17 @@ def heatmap_draw(
                 def format_coord(x, y):
                     x = np.floor(x).astype("int")
                     y = np.floor(y).astype("int")
-                    pos = df_wt.columns[x]
-                    residue = df_wt.index[y]
-                    fitness_score = data.loc[residue, pos].round(4)
+                    residue = df_wt.columns[x]
+                    pos = df_wt.index[y]
+                    fitness_score = data.loc[pos, residue].round(4)
                     return f"position: {pos}, residue: {residue}, fitness: {fitness_score}"
             elif orientation == "horizontal":
                 def format_coord(x, y):
                     x = np.floor(x).astype("int")
                     y = np.floor(y).astype("int")
-                    pos = df_wt.columns[x]
-                    residue = df_wt.index[y]
-                    fitness_score = data.T.loc[residue, pos].round(4)
+                    pos = df_wt.index[x]
+                    residue = df_wt.columns[y]
+                    fitness_score = data.loc[pos, residue].round(4)
                     return f"position: {pos}, residue: {residue}, fitness: {fitness_score}"
             ax.format_coord = format_coord
             # * add x-axis (position) labels to top/left subplot

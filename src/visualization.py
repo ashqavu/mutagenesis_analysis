@@ -148,7 +148,19 @@ def heatmap_missing_mutations(df, ax=None, cbar_ax=None, orientation="vertical")
     return ax
 
 
-def heatmap_wrapper(df: pd.DataFrame, dataset: str, ax=None, cbar=False, cbar_ax=None, cbar_kws=None, vmin=-2, vmax=2):
+def heatmap_wrapper(
+    df: pd.DataFrame,
+    name: str,
+    dataset: str,
+    gene,
+    ax=None,
+    cbar=False,
+    cbar_ax=None,
+    cbar_kws=None,
+    vmin=-2,
+    vmax=2,
+    orientation="horizontal",
+):
     """
     Function wrapper for preferred heatmap aesthetic settings
 
@@ -156,6 +168,12 @@ def heatmap_wrapper(df: pd.DataFrame, dataset: str, ax=None, cbar=False, cbar_ax
     ----------
     df : pandas.DataFrame
         Matrix to be plotted
+    name : str
+        Sample name for axes labeling
+    dataset : str
+        Type of data ("counts" or "fitness")
+    gene : str
+        Gene object to provide residue numbering
     ax : matplotlib.Axes, optional
         Axes on which to draw the data, by default None
     cbar : bool, optional
@@ -164,15 +182,18 @@ def heatmap_wrapper(df: pd.DataFrame, dataset: str, ax=None, cbar=False, cbar_ax
         Axes on which to draw the colorbar, by default None
     cbar_kws : _type_, optional
         *kwargs passed to matplotlib.colorbar(), by default None
+    vmin : int, optional
+        For fitness data, vmin parameter passed to sns.heatmap, by default -2
+    vmax : int, optional
+        For fitness data, vmax parameter passed to sns.heatmap, by default 2
+    orientation : str, optional
+        Whether to draw heatmaps vertically or horizontally, by default "horizontal"
 
     Returns
     -------
     h : matplotlib.Axes
         Axes object with the heatmap
     """
-    cbar_kws_dict = {"use_gridspec": True}
-    if cbar_kws:
-        cbar_kws_dict.update(cbar_kws)
     if dataset == "counts":
         with np.errstate(divide="ignore"):
             df = df.where(df.lt(1), np.log10(df))
@@ -181,11 +202,23 @@ def heatmap_wrapper(df: pd.DataFrame, dataset: str, ax=None, cbar=False, cbar_ax
             vmax = None
     elif dataset == "fitness":
         cmap = "vlag"
+
+    cbar_kws_dict = {"use_gridspec": True, "orientation": "vertical"}
+    if cbar_kws:
+        cbar_kws_dict.update(cbar_kws)
+    xticklabels, yticklabels = 1, 10
+
+    if orientation == "horizontal":
+        df_wt = df_wt.T
+        df = df.T
+        xticklabels, yticklabels = yticklabels, xticklabels
+        cbar_kws_dict.update({"orientation": "horizontal"})
+
     h = sns.heatmap(
         df,
         square=True,
-        xticklabels=10,
-        yticklabels=1,
+        xticklabels=xticklabels,
+        yticklabels=yticklabels,
         cbar=cbar,
         cmap=cmap,
         vmin=vmin,
@@ -197,20 +230,46 @@ def heatmap_wrapper(df: pd.DataFrame, dataset: str, ax=None, cbar=False, cbar_ax
         ax=ax,
         cbar_ax=cbar_ax,
         cbar_kws=cbar_kws_dict,
-        facecolor="black"
+        facecolor="black",
     )
-    h.tick_params(axis="x", labelrotation=90, labelbottom=False)
-    h.tick_params(axis="y", labelrotation=0)
+
+    if orientation == "vertical":
+        h.tick_params(axis="both", labelrotation=0, labelleft=False)
+        h.set_title(name)
+    elif orientation == "horizontal":
+        h.tick_params(axis="x", labelrotation=90, labelbottom=False)
+        h.tick_params(axis="y", labelrotation=0)
+        h.set_ylabel(name)
+
+    # * draw and label wild-type patches
+    df_wt = heatmap_masks(gene)
+    for i, j in np.asarray(np.nonzero(df_wt.values)).T:
+        ax.add_patch(Rectangle((i, j), 1, 1, fill=True, color="slategray", ec=None))
+        if orientation == "horizontal":
+            j += 0.5
+            rotation = 90
+        elif orientation == "vertical":
+            i += 0.5
+            rotation = 0
+        ax.text(
+            i, j, "/", color="white", va="center", fontsize=1, rotation=rotation
+        )
     respine(h)
     return h
 
 
-def heatmap_draw(df_dict: dict, dataset: str, gene, vmin=-2, vmax=2):
+def heatmap_draw(
+    df_dict: dict,
+    dataset: str,
+    gene,
+    vmin=-2,
+    vmax=2,
+    orientation="horizontal",
+    figwidth=5,
+):
     """
     Draw a heatmap of a dataset
     # TODO: consider re-adding figure to make a missing chart, but perhaps not really necessary
-    # TODO: re-adjust for option of plotting vertically
-    # TODO: add annotations for wild-type residues
 
     Parameters
     ----------
@@ -218,10 +277,16 @@ def heatmap_draw(df_dict: dict, dataset: str, gene, vmin=-2, vmax=2):
         Sample names with datatables
     dataset : str
         Whether to draw a heatmap for raw (log-transformed) counts or fitness data
+    gene : Gene
+        Gene object that provides residue numbering
     vmin : int, optional
         For fitness data, vmin parameter passed to sns.heatmap, by default -2
     vmax : int, optional
         For fitness data, vmax parameter passed to sns.heatmap, by default 2
+    orientation : str, optional
+        Whether to draw heatmaps vertically or horizontally, by default "horizontal"
+    figwidth : int, optional
+        Figure width, by default 5
 
     Returns
     -------
@@ -229,59 +294,108 @@ def heatmap_draw(df_dict: dict, dataset: str, gene, vmin=-2, vmax=2):
         matplotlib.Figure
     """
     df_wt = heatmap_masks(gene)
+    num_plots = len(df_dict)
+    num_rows = 1
+    num_columns = num_plots + 1
+    width_ratios, height_ratios = [1] * num_plots + [0.1], None
+    if orientation == "horizontal":
+        num_rows, num_columns = num_columns, num_rows
+        width_ratios, height_ratios = height_ratios, width_ratios
+
     with plt.style.context("heatmap.mplstyle"):
-        num_plots = len(df_dict)
-        num_rows = num_plots + 1
-        num_columns = 1
-        height_ratios = [1] * num_plots + [0.1]
-        
         fig = plt.figure(constrained_layout=True)
+        if orientation == "horizontal":
+            fig.set_figwidth(figwidth)
+        elif orientation == "vertical":
+            fig.set_figheight(12)
         if dataset == "counts":
             fig.suptitle("Raw counts of mutations ($log_{10}$)")
         elif dataset == "fitness":
             fig.suptitle("Fitness values")
-        
-        fig.set_figwidth(5)
-        gs = fig.add_gridspec(num_rows, num_columns, height_ratios=height_ratios)
+
+        gs = fig.add_gridspec(
+            num_rows,
+            num_columns,
+            height_ratios=height_ratios,
+            width_ratios=width_ratios,
+        )
         cbar_ax = plt.subplot(gs[-1], aspect=0.3, anchor="NW", label="colorbar")
-        
+        if orientation == "vertical":
+            cbar_ax.set_aspect(7)
+
         # * plot each data one by one
         for i, (sample, data) in enumerate(df_dict.items()):
             ax = plt.subplot(gs[i], label=sample, anchor="NW")
             # * function-provided styling for heatmap
             if dataset == "counts":
-                # ! watch for transposed data that i need to fix later
-                heatmap_wrapper(data.T, dataset=dataset, ax=ax, cbar=True, cbar_ax=cbar_ax, cbar_kws={"orientation": "horizontal"})
-            elif dataset =="fitness":
-                heatmap_wrapper(data.T, dataset=dataset, ax=ax, cbar=True, cbar_ax=cbar_ax, cbar_kws={"orientation": "horizontal"}, vmin=vmin, vmax=vmax)
-            ax.set_ylabel(sample)
-            # * add x-axis (position) labels to top subplot
+                heatmap_wrapper(
+                    data,
+                    name=sample,
+                    gene=gene,
+                    dataset=dataset,
+                    ax=ax,
+                    cbar=True,
+                    cbar_ax=cbar_ax,
+                    orientation=orientation,
+                )
+            elif dataset == "fitness":
+                heatmap_wrapper(
+                    data,
+                    name=sample,
+                    gene=gene,
+                    dataset=dataset,
+                    ax=ax,
+                    cbar=True,
+                    cbar_ax=cbar_ax,
+                    vmin=vmin,
+                    vmax=vmax,
+                    orientation=orientation,
+                )
+                
+            # * reformat coordinate labeler
+            if orientation == "vertical":
+                def format_coord(x, y):
+                    x = np.floor(x).astype("int")
+                    y = np.floor(y).astype("int")
+                    pos = df_wt.columns[x]
+                    residue = df_wt.index[y]
+                    fitness_score = data.loc[residue, pos].round(4)
+                    return f"position: {pos}, residue: {residue}, fitness: {fitness_score}"
+            elif orientation == "horizontal":
+                def format_coord(x, y):
+                    x = np.floor(x).astype("int")
+                    y = np.floor(y).astype("int")
+                    pos = df_wt.columns[x]
+                    residue = df_wt.index[y]
+                    fitness_score = data.T.loc[residue, pos].round(4)
+                    return f"position: {pos}, residue: {residue}, fitness: {fitness_score}"
+            ax.format_coord = format_coord
+            # * add x-axis (position) labels to top/left subplot
             if i == 0:
-                ax.tick_params(axis="x", labeltop=True)
+                if orientation == "vertical":
+                    ax.tick_params(labelleft=True)
+                elif orientation == "horizontal":
+                    ax.tick_params(labeltop=True)
             # * share the x- and y-axis of the data plots
             elif i >= 1:
                 ax.sharex(fig.axes[1])
                 ax.sharey(fig.axes[1])
-            # * draw and label wild-type patches
-            for i, j in np.asarray(np.nonzero(df_wt.values)).T: # ! transposed
-                ax.add_patch(Rectangle((i, j), 1, 1, fill=True, color="slategray", ec=None))
-                ax.text(i, j + 0.5, "/", color="white", va="center", fontsize=1, rotation=90)
-            # * reformat coordinate labeler
-            def format_coord(x, y):
-                x = np.floor(x).astype("int")
-                y = np.floor(y).astype("int")
-                # ! watch figure orientation
-                pos = df_wt.T.columns[x]
-                residue = df_wt.T.index[y]
-                fitness_score = data.T.loc[residue, pos].round(4)
-                return f"position: {pos}, residue: {residue}, fitness: {fitness_score}"
-            ax.format_coord = format_coord
         # * adjust colorbar aesthetics
         cbar_ax.spines["outline"].set_visible(True)
         cbar_ax.spines["outline"].set_lw(0.4)
-        # * calculate the minimum figure height that keeps aspect ratio of heatmaps
-        height = 0
-        for ax in fig.axes:
-            height += ax.get_tightbbox(fig.canvas.get_renderer()).transformed(fig.dpi_scale_trans.inverted()).height + 0.1
-        fig.set_figheight(height)
+        # * calculate the minimum figure height/width that keeps aspect ratio of heatmaps
+        if orientation == "horizontal":
+            height = 0
+            for ax in fig.axes:
+                height += (
+                    ax.get_tightbbox(fig.canvas.get_renderer())
+                    .transformed(fig.dpi_scale_trans.inverted())
+                    .height
+                    + 0.1
+                )
+            fig.set_figheight(height)
+        if orientation == "vertical":
+            fig.set_figwidth(figwidth)
+            height = ax.get_tightbbox(fig.canvas.get_renderer()).transformed(fig.dpi_scale_trans.inverted()).height
+            fig.set_figheight(height)
     return fig

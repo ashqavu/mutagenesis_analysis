@@ -233,10 +233,13 @@ def heatmap_wrapper(
         cbar_kws=cbar_kws_dict,
         facecolor="black",
     )
+    ax.set_facecolor("black")
 
     if orientation == "vertical":
-        h.tick_params(axis="both", labelrotation=0, labelleft=False)
-        h.set_title(name)
+        with plt.rc_context({"figure.titlesize": 14, "axes.titlesize": 10, "axes.titlepad": 5, "ytick.labelsize": 4}):
+            h.tick_params(axis="both", labelrotation=0, labelleft=False, labelsize=4)
+            h.tick_params(axis="x", labelsize=3)
+            h.set_title(name)
     elif orientation == "horizontal":
         h.tick_params(axis="x", labelrotation=90, labelbottom=False)
         h.tick_params(axis="y", labelrotation=0)
@@ -396,6 +399,10 @@ def heatmap_draw(
                 )
             fig.set_figheight(height)
         if orientation == "vertical":
+            fig.texts[0].set_fontsize(14)
+            for tick in cbar_ax.get_yticklabels():
+                tick.set_fontsize(4.5)
+            plt.draw()
             fig.set_figwidth(figwidth)
             height = ax.get_tightbbox(fig.canvas.get_renderer()).transformed(fig.dpi_scale_trans.inverted()).height
             fig.set_figheight(height)

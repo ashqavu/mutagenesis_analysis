@@ -4,6 +4,7 @@ figure.titleweight: bold
 
 axes.titlesize: 4
 axes.titlepad: 2.5
+axes.titleweight: bold
 axes.labelsize: 4
 axes.labelpad: 1.5
 axes.labelweight: bold

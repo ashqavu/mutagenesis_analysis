@@ -4,17 +4,26 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from Bio.Data import IUPACData
-from matplotlib import colors
 from matplotlib.offsetbox import AnchoredText
+from matplotlib.patches import Rectangle
 from scipy.stats import norm
 
 
 def heatmap_table(gene):
     df = pd.DataFrame(
+        False,
         index=np.arange(len(gene.cds_translation)),
         columns=list(IUPACData.protein_letters + "*∅"),
     )
     return df
+
+
+# //* should do something about the numbering flexibility here
+def heatmap_masks(gene):
+    df_wt = heatmap_table(gene)
+    for position, residue in enumerate(gene.cds_translation):
+        df_wt.loc[position, residue] = True
+    return df_wt
 
 
 def respine(ax):
@@ -86,17 +95,6 @@ def histogram_mutation_counts(SequencingData):
         )
         ax.add_artist(annot_box)
     return fig
-
-
-# //* should do something about the numbering flexibility here
-def heatmap_masks(gene):
-    df_mask = heatmap_table(gene)
-    df_mask_annot = df_mask.copy()
-    df_mask_annot.loc[:, :] = ""
-    for position, residue in enumerate(gene.cds_translation):
-        df_mask_annot.loc[position, residue] = "/"
-    df_mask_WT = df_mask_annot == "/"
-    return df_mask_WT, df_mask_annot
 
 
 def heatmap_missing_mutations(df, ax=None, cbar_ax=None, orientation="vertical"):
@@ -198,7 +196,8 @@ def heatmap_wrapper(df: pd.DataFrame, dataset: str, ax=None, cbar=False, cbar_ax
         clip_on=False,
         ax=ax,
         cbar_ax=cbar_ax,
-        cbar_kws=cbar_kws_dict
+        cbar_kws=cbar_kws_dict,
+        facecolor="black"
     )
     h.tick_params(axis="x", labelrotation=90, labelbottom=False)
     h.tick_params(axis="y", labelrotation=0)
@@ -206,7 +205,7 @@ def heatmap_wrapper(df: pd.DataFrame, dataset: str, ax=None, cbar=False, cbar_ax
     return h
 
 
-def heatmap_draw(df_dict: dict, dataset: str, vmin=-2, vmax=2):
+def heatmap_draw(df_dict: dict, dataset: str, gene, vmin=-2, vmax=2):
     """
     Draw a heatmap of a dataset
     # TODO: consider re-adding figure to make a missing chart, but perhaps not really necessary
@@ -229,6 +228,7 @@ def heatmap_draw(df_dict: dict, dataset: str, vmin=-2, vmax=2):
     fig
         matplotlib.Figure
     """
+    df_wt = heatmap_masks(gene)
     with plt.style.context("heatmap.mplstyle"):
         num_plots = len(df_dict)
         num_rows = num_plots + 1
@@ -250,6 +250,7 @@ def heatmap_draw(df_dict: dict, dataset: str, vmin=-2, vmax=2):
             ax = plt.subplot(gs[i], label=sample, anchor="NW")
             # * function-provided styling for heatmap
             if dataset == "counts":
+                # ! watch for transposed data that i need to fix later
                 heatmap_wrapper(data.T, dataset=dataset, ax=ax, cbar=True, cbar_ax=cbar_ax, cbar_kws={"orientation": "horizontal"})
             elif dataset =="fitness":
                 heatmap_wrapper(data.T, dataset=dataset, ax=ax, cbar=True, cbar_ax=cbar_ax, cbar_kws={"orientation": "horizontal"}, vmin=vmin, vmax=vmax)
@@ -261,6 +262,20 @@ def heatmap_draw(df_dict: dict, dataset: str, vmin=-2, vmax=2):
             elif i >= 1:
                 ax.sharex(fig.axes[1])
                 ax.sharey(fig.axes[1])
+            # * draw and label wild-type patches
+            for i, j in np.asarray(np.nonzero(df_wt.values)).T: # ! transposed
+                ax.add_patch(Rectangle((i, j), 1, 1, fill=True, color="slategray", ec=None))
+                ax.text(i, j + 0.5, "/", color="white", va="center", fontsize=1, rotation=90)
+            # * reformat coordinate labeler
+            def format_coord(x, y):
+                x = np.floor(x).astype("int")
+                y = np.floor(y).astype("int")
+                # ! watch figure orientation
+                pos = df_wt.T.columns[x]
+                residue = df_wt.T.index[y]
+                fitness_score = data.T.loc[residue, pos].round(4)
+                return f"position: {pos}, residue: {residue}, fitness: {fitness_score}"
+            ax.format_coord = format_coord
         # * adjust colorbar aesthetics
         cbar_ax.spines["outline"].set_visible(True)
         cbar_ax.spines["outline"].set_lw(0.4)

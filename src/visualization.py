@@ -207,6 +207,7 @@ def heatmap_wrapper(
     if cbar_kws:
         cbar_kws_dict.update(cbar_kws)
     xticklabels, yticklabels = 1, 10
+    df_wt = heatmap_masks(gene)
 
     if orientation == "horizontal":
         df_wt = df_wt.T
@@ -242,18 +243,18 @@ def heatmap_wrapper(
         h.set_ylabel(name)
 
     # * draw and label wild-type patches
-    df_wt = heatmap_masks(gene)
-    for i, j in np.asarray(np.nonzero(df_wt.values)).T:
+    for j, i in np.asarray(np.where(df_wt)).T:
         ax.add_patch(Rectangle((i, j), 1, 1, fill=True, color="slategray", ec=None))
+        j += 0.5
         if orientation == "horizontal":
-            j += 0.5
             rotation = 90
+            fontsize = 2
         elif orientation == "vertical":
-            i += 0.5
             rotation = 0
+            fontsize = 4
         ax.text(
-            i, j, "/", color="white", va="center", fontsize=1, rotation=rotation
-        )
+            i, j, "/", color="white", va="center", fontsize=fontsize, fontfamily="monospace", rotation=rotation
+            )
     respine(h)
     return h
 

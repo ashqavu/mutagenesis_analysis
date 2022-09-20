@@ -156,7 +156,6 @@ def heatmap_wrapper(
     ax=None,
     cbar=False,
     cbar_ax=None,
-    cbar_kws=None,
     vmin=-2,
     vmax=2,
     orientation="horizontal",
@@ -180,8 +179,6 @@ def heatmap_wrapper(
         Whether to draw a colorbar or not, by default False
     cbar_ax : matplotlib.Axes, optional
         Axes on which to draw the colorbar, by default None
-    cbar_kws : _type_, optional
-        *kwargs passed to matplotlib.colorbar(), by default None
     vmin : int, optional
         For fitness data, vmin parameter passed to sns.heatmap, by default -2
     vmax : int, optional
@@ -203,9 +200,6 @@ def heatmap_wrapper(
     elif dataset == "fitness":
         cmap = "vlag"
 
-    cbar_kws_dict = {"use_gridspec": True, "orientation": "vertical"}
-    if cbar_kws:
-        cbar_kws_dict.update(cbar_kws)
     xticklabels, yticklabels = 1, 10
     df_wt = heatmap_masks(gene)
 
@@ -213,7 +207,6 @@ def heatmap_wrapper(
         df_wt = df_wt.T
         df = df.T
         xticklabels, yticklabels = yticklabels, xticklabels
-        cbar_kws_dict.update({"orientation": "horizontal"})
 
     h = sns.heatmap(
         df,
@@ -225,29 +218,41 @@ def heatmap_wrapper(
         vmin=vmin,
         vmax=vmax,
         linecolor="slategray",
-        edgecolor="darkslategray",
         linewidths=0.2,
         clip_on=False,
         ax=ax,
         cbar_ax=cbar_ax,
-        cbar_kws=cbar_kws_dict,
-        facecolor="black",
     )
-    ax.set_facecolor("black")
+    h.set_facecolor("black")
+    h.set_anchor("NW")
 
+    # * adjust ticks
+    h.tick_params(
+        left=False,
+        bottom=False,
+        top=False,
+        right=False,
+        labelbottom=False,
+        labelleft=False,
+        rotation=0,
+        labelsize=3,
+        length=0,
+        pad=1,
+    )
+    h.tick_params(axis="y", labelsize=4)
+    if orientation == "horizontal":
+        h.tick_params(labelsize=1.5)
+        h.tick_params(axis="x", rotation=90, labelsize=2)
+
+    # * set title
     if orientation == "vertical":
-        with plt.rc_context({"figure.titlesize": 14, "axes.titlesize": 10, "axes.titlepad": 5, "ytick.labelsize": 4}):
-            h.tick_params(axis="both", labelrotation=0, labelleft=False, labelsize=4)
-            h.tick_params(axis="x", labelsize=3)
-            h.set_title(name)
+        ax.set_title(name, fontweight="bold", fontsize=8, pad=2)
     elif orientation == "horizontal":
-        h.tick_params(axis="x", labelrotation=90, labelbottom=False)
-        h.tick_params(axis="y", labelrotation=0)
-        h.set_ylabel(name)
+        ax.set_ylabel(name, fontweight="bold", fontsize=6, labelpad=2)
 
     # * draw and label wild-type patches
     for j, i in np.asarray(np.where(df_wt)).T:
-        ax.add_patch(Rectangle((i, j), 1, 1, fill=True, color="slategray", ec=None))
+        h.add_patch(Rectangle((i, j), 1, 1, fill=True, color="slategray", ec=None))
         j += 0.5
         if orientation == "horizontal":
             rotation = 90
@@ -255,10 +260,39 @@ def heatmap_wrapper(
         elif orientation == "vertical":
             rotation = 0
             fontsize = 4
-        ax.text(
-            i, j, "/", color="white", va="center", fontsize=fontsize, fontfamily="monospace", rotation=rotation
-            )
+        h.text(
+            i,
+            j,
+            "/",
+            color="white",
+            va="center",
+            fontsize=fontsize,
+            fontfamily="monospace",
+            rotation=rotation,
+        )
     respine(h)
+    # * reformat coordinate labeler
+    if orientation == "vertical":
+
+        def format_coord(x, y):
+            x = np.floor(x).astype("int")
+            y = np.floor(y).astype("int")
+            residue = df.columns[x]
+            pos = df.index[y]
+            fitness_score = df.loc[pos, residue].round(4)
+            return f"position: {pos}, residue: {residue}, fitness: {fitness_score}"
+
+    elif orientation == "horizontal":
+
+        def format_coord(x, y):
+            x = np.floor(x).astype("int")
+            y = np.floor(y).astype("int")
+            pos = df.columns[x]
+            residue = df.index[y]
+            fitness_score = df.loc[residue, pos].round(4)
+            return f"position: {pos}, residue: {residue}, fitness: {fitness_score}"
+
+    ax.format_coord = format_coord
     return h
 
 
@@ -297,113 +331,64 @@ def heatmap_draw(
     fig
         matplotlib.Figure
     """
-    df_wt = heatmap_masks(gene)
-    num_plots = len(df_dict)
+    num_columns = len(df_dict)
     num_rows = 1
-    num_columns = num_plots + 1
-    width_ratios, height_ratios = [1] * num_plots + [0.1], None
+    cbar_location = "right"
     if orientation == "horizontal":
-        num_rows, num_columns = num_columns, num_rows
-        width_ratios, height_ratios = height_ratios, width_ratios
+        num_columns, num_rows = num_rows, num_columns
+        cbar_location = "bottom"
+    fig, axs = plt.subplots(
+        num_rows, num_columns, figsize=(5, 12), dpi=300, layout="compressed"
+    )
+    if dataset == "counts":
+        fig.suptitle("Raw counts of mutations ($log_{10}$)", fontweight="bold")
+    elif dataset == "fitness":
+        fig.suptitle("Fitness values", fontweight="bold")
 
-    with plt.style.context("heatmap.mplstyle"):
-        fig = plt.figure(constrained_layout=True)
-        if orientation == "horizontal":
-            fig.set_figwidth(figwidth)
-        elif orientation == "vertical":
-            fig.set_figheight(12)
+    # * plot each data one by one
+    for i, (sample, data) in enumerate(df_dict.items()):
+        # * function-provided styling for heatmap
         if dataset == "counts":
-            fig.suptitle("Raw counts of mutations ($log_{10}$)")
+            heatmap_wrapper(
+                data,
+                name=sample,
+                gene=gene,
+                dataset=dataset,
+                ax=axs[i],
+                orientation=orientation,
+            )
         elif dataset == "fitness":
-            fig.suptitle("Fitness values")
-
-        gs = fig.add_gridspec(
-            num_rows,
-            num_columns,
-            height_ratios=height_ratios,
-            width_ratios=width_ratios,
-        )
-        cbar_ax = plt.subplot(gs[-1], aspect=0.3, anchor="NW", label="colorbar")
-        if orientation == "vertical":
-            cbar_ax.set_aspect(7)
-
-        # * plot each data one by one
-        for i, (sample, data) in enumerate(df_dict.items()):
-            ax = plt.subplot(gs[i], label=sample, anchor="NW")
-            # * function-provided styling for heatmap
-            if dataset == "counts":
-                heatmap_wrapper(
-                    data,
-                    name=sample,
-                    gene=gene,
-                    dataset=dataset,
-                    ax=ax,
-                    cbar=True,
-                    cbar_ax=cbar_ax,
-                    orientation=orientation,
-                )
-            elif dataset == "fitness":
-                heatmap_wrapper(
-                    data,
-                    name=sample,
-                    gene=gene,
-                    dataset=dataset,
-                    ax=ax,
-                    cbar=True,
-                    cbar_ax=cbar_ax,
-                    vmin=vmin,
-                    vmax=vmax,
-                    orientation=orientation,
-                )
-                
-            # * reformat coordinate labeler
-            if orientation == "vertical":
-                def format_coord(x, y):
-                    x = np.floor(x).astype("int")
-                    y = np.floor(y).astype("int")
-                    residue = df_wt.columns[x]
-                    pos = df_wt.index[y]
-                    fitness_score = data.loc[pos, residue].round(4)
-                    return f"position: {pos}, residue: {residue}, fitness: {fitness_score}"
-            elif orientation == "horizontal":
-                def format_coord(x, y):
-                    x = np.floor(x).astype("int")
-                    y = np.floor(y).astype("int")
-                    pos = df_wt.index[x]
-                    residue = df_wt.columns[y]
-                    fitness_score = data.loc[pos, residue].round(4)
-                    return f"position: {pos}, residue: {residue}, fitness: {fitness_score}"
-            ax.format_coord = format_coord
-            # * add x-axis (position) labels to top/left subplot
-            if i == 0:
-                if orientation == "vertical":
-                    ax.tick_params(labelleft=True)
-                elif orientation == "horizontal":
-                    ax.tick_params(labeltop=True)
-            # * share the x- and y-axis of the data plots
-            elif i >= 1:
-                ax.sharex(fig.axes[1])
-                ax.sharey(fig.axes[1])
-        # * adjust colorbar aesthetics
-        cbar_ax.spines["outline"].set_visible(True)
-        cbar_ax.spines["outline"].set_lw(0.4)
-        # * calculate the minimum figure height/width that keeps aspect ratio of heatmaps
-        if orientation == "horizontal":
-            height = 0
-            for ax in fig.axes:
-                height += (
-                    ax.get_tightbbox(fig.canvas.get_renderer())
-                    .transformed(fig.dpi_scale_trans.inverted())
-                    .height
-                    + 0.1
-                )
-            fig.set_figheight(height)
-        if orientation == "vertical":
-            fig.texts[0].set_fontsize(14)
-            for tick in cbar_ax.get_yticklabels():
-                tick.set_fontsize(4.5)
-            plt.draw()
-            fig.set_figwidth(figwidth)
-            height = ax.get_tightbbox(fig.canvas.get_renderer()).transformed(fig.dpi_scale_trans.inverted()).height
-            fig.set_figheight(height)
-    return fig
+            heatmap_wrapper(
+                data,
+                name=sample,
+                gene=gene,
+                dataset=dataset,
+                ax=axs[i],
+                vmin=vmin,
+                vmax=vmax,
+                orientation=orientation,
+            )
+    if orientation == "horizontal":
+        height = 0
+        for ax in fig.axes:
+            ax.tick_params(labelleft=True)
+            height += (
+                ax.get_tightbbox().transformed(fig.dpi_scale_trans.inverted()).height
+            )
+        fig.axes[0].tick_params(labeltop=True)
+        fig.set_figheight(height + 1)
+    elif orientation == "vertical":
+        for ax in fig.axes:
+            ax.tick_params(labelbottom=True)
+        fig.axes[0].tick_params(labelleft=True)
+        fig.set_figheight(fig.get_tightbbox().height)
+    cbar = fig.colorbar(
+        axs[0].collections[0],
+        ax=fig.axes,
+        shrink=0.2,
+        fraction=0.1,
+        anchor="NW",
+        location=cbar_location,
+    )
+    cbar.ax.spines["outline"].set_lw(0.4)
+    cbar.ax.tick_params(right=False, left=False, labelsize=4, length=0, pad=3)

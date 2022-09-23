@@ -190,7 +190,7 @@ def count_mutations(df, gene, quality_filter=30):
 
     df_multiples, df_singles = find_multiple_mutants(df_quality_filter)
     num_singles = df_singles.shape[0]
-    num_multiples = df_multiples["read_id"].unique().shape[0]
+    num_multiples = df_multiples["read_id"].unique().shape[0]    
 
     print(f"Number of reads with one mutation passing quality check: {num_singles:,}")
     print(
@@ -210,7 +210,7 @@ def count_mutations(df, gene, quality_filter=30):
     df_counts.fillna(0, inplace=True)
     # df_counts.index = pd.Index(gene.numbering_scheme, dtype="int64")
 
-    return df_counts
+    return df_counts, num_singles, num_multiples
 
 
 def main():
@@ -253,6 +253,7 @@ def main():
 
     print(f"{fGetTime()} Generating mutations table...")
     df_mutations = read_mutations(mutations, gene)
+    df_mutations.name = sample_name
     df_mutations.to_csv(
         output_folder / f"mutations/{sample_name}_mutations.tsv", index=False, sep="\t"
     )
@@ -260,7 +261,9 @@ def main():
     print(f"{fGetTime()} Done")
 
     print(f"{fGetTime()} Calculating mutation counts...")
-    df_counts = count_mutations(df_mutations, gene, quality_filter)
+    df_counts, num_singles, num_multiples = count_mutations(df_mutations, gene, quality_filter)
+    with open(output_folder / "multiple_mutants.tsv", "a") as f:
+        f.write(f"{sample_name}\t{num_singles}\t{num_multiples}\n")
     df_counts.to_csv(output_folder / f"counts/{sample_name}_counts.tsv", sep="\t")
     df_counts.to_pickle(output_folder / f"counts/{sample_name}_counts.pkl")
     print(f"{fGetTime()} Done")

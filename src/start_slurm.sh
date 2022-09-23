@@ -19,10 +19,10 @@ while read LINE; do
   array_ids=${array_ids}$(echo -e $(echo $LINE | awk '{ print $1 }'),)
 done < $INPUTFOLDER/raw_data/SampleNames.txt
 
-mkdir -p $INPUTFOLDER/results/counts
-> $INPUTFOLDER/results/counts/total_reads.csv
+mkdir -p $INPUTFOLDER/alignments
+> $INPUTFOLDER/alignments/total_reads.tsv
 mkdir -p $INPUTFOLDER/job_outputs
 cd $INPUTFOLDER/job_outputs
 
-echo -e 'sbatch --array '$array_ids' /project/greencenter/Toprak_lab/s426833/TEM-1/src/mutation_scanning.sh '$INPUTFOLDER' '$GENE''
-sbatch --array $array_ids /project/greencenter/Toprak_lab/s426833/TEM-1/src/mutation_scanning.sh $INPUTFOLDER $GENE
+echo -e 'sbatch --array '$array_ids' /work/greencenter/Toprak_lab/s426833/TEM-1/src/mutation_scanning.sh '$INPUTFOLDER' '$GENE''
+sbatch --array $array_ids /work/greencenter/s426833/TEM-1/src/mutation_scanning.sh $INPUTFOLDER $GENE

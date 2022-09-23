@@ -3,7 +3,7 @@
 #SBATCH -p 256GBv1
 #SBATCH -e %a.err
 #SBATCH -o %a.out
-#SBATCH -t 0:30:0
+#SBATCH -t 1:30:0
 
 #SBATCH --mail-type NONE
 
@@ -15,13 +15,13 @@ INPUTFOLDER=$(realpath $1)
 GENE=$2
 
 NUMCORES="$(nproc)"
-FLASH="/project/greencenter/Toprak_lab/s426833/TEM-1/flash"
-REF_FOLDER="/project/greencenter/Toprak_lab/s426833/TEM-1/ref_data"
+FLASH="/work/greencenter/s426833/TEM-1/flash"
+REF_FOLDER="/work/greencenter/s426833/TEM-1/ref_data"
 REF_GBK="$REF_FOLDER/pBR322_AvrII_rc.gbk"
-SCRIPT_PATH="/project/greencenter/Toprak_lab/s426833/TEM-1/src/sequence_mapping.py"
+SCRIPT_PATH="/work/greencenter/s426833/TEM-1/src/sequence_mapping.py"
 
 export BOWTIE2_INDEXES="$REF_FOLDER/pBR322_bowtie_index"
-export PYTHONPATH="$PYTHONPATH:/project/greencenter/Toprak_lab/s426833/TEM-1/src"
+export PYTHONPATH="$PYTHONPATH:/work/greencenter/s426833/TEM-1/src"
 
 SAMPLE_NAMES=$INPUTFOLDER/raw_data/SampleNames.txt
 if ! grep -o "^$SLURM_ARRAY_TASK_ID\s.*\w" $SAMPLE_NAMES; then
@@ -70,7 +70,7 @@ echo -e $SAMPLE'\t'$TOTAL_READS >> alignments/total_reads.tsv
 echo "[$(date +"%T")] $TOTAL_READS reads found for $SAMPLE"
 echo
 
-echo "[$(date +"%T")] python /project/greencenter/Toprak_lab/s426833/TEM-1/src/sequence_mapping.py alignments/$SAMPLE.bam $REF_GBK $GENE"
+echo "[$(date +"%T")] python /work/greencenter/s426833/TEM-1/src/sequence_mapping.py alignments/$SAMPLE.bam $REF_GBK $GENE"
 python $SCRIPT_PATH alignments/$SAMPLE.bam $REF_GBK $GENE
 
 ENDTIME=$SECONDS

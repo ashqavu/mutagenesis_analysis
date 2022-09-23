@@ -219,7 +219,7 @@ def heatmap_wrapper(
         vmax=vmax,
         linecolor="slategray",
         linewidths=0.2,
-        clip_on=False,
+        clip_on=True,
         ax=ax,
         cbar_ax=cbar_ax,
     )
@@ -269,6 +269,7 @@ def heatmap_wrapper(
             fontsize=fontsize,
             fontfamily="monospace",
             rotation=rotation,
+            clip_on=True
         )
     respine(h)
     # * reformat coordinate labeler
@@ -338,7 +339,7 @@ def heatmap_draw(
         num_columns, num_rows = num_rows, num_columns
         cbar_location = "bottom"
     fig, axs = plt.subplots(
-        num_rows, num_columns, figsize=(5, 12), dpi=300, layout="compressed"
+        num_rows, num_columns, figsize=(5, 12), dpi=300, layout="compressed", sharex=True, sharey=True
     )
     if dataset == "counts":
         fig.suptitle("Raw counts of mutations ($log_{10}$)", fontweight="bold")
@@ -392,3 +393,4 @@ def heatmap_draw(
     )
     cbar.ax.spines["outline"].set_lw(0.4)
     cbar.ax.tick_params(right=False, left=False, labelsize=4, length=0, pad=3)
+    return fig

@@ -1,10 +1,12 @@
 #!/usr/bin/env python
+"""
+This script is written to parse the mutation data from the read sequences. It provides a base SequencingData object class that holds information about the dataset (e.g. sample names, reference gene) and calculates counts, frequency, enrichment, and fitness data. Two additional subclasses are provided for parsing different sequencing schemes, such as when the sublibraries are submitted as one pooled library sample as opposed to separate sublibraries for sequencing.
+"""
 import copy
 import csv
 import glob
 import re
 from pathlib import Path
-from pickle import PicklingError, UnpicklingError
 
 import numpy as np
 import pandas as pd

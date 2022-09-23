@@ -1,13 +1,12 @@
 #!/usr/bin/env python
+"""
+This script creates a class that holds relevant information about the gene (e.g. sequence, translated peptide, codon positions) extracted from the GenBank file provided.
+"""
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 from Bio import SeqIO
-
-"""
-This script creates a class that holds relevant information about the gene (e.g. sequence, translated peptide, codon positions) extracted from the GenBank file provided.
-"""
 
 
 @dataclass

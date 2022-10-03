@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import pysam
 from Bio.Data import CodonTable, IUPACData
-from pysam import AlignmentFile
 from tqdm import tqdm
 
 from plasmid_map import Gene
@@ -69,6 +68,8 @@ def fGetTime():
 
 
 def mutation_finder(alignments, gene):
+    cds_start = gene.cds.location.start
+    cds_end = gene.cds.location.end
     insertions = []
     deletions = []
     wildtypes = []
@@ -101,7 +102,7 @@ def mutation_finder(alignments, gene):
                         aln.query_qualities[query_pos],
                         aln.query_sequence,
                         aln.get_overlap(
-                            start=gene.cds.location.start, end=gene.cds.location.end
+                            start=cds_start, end=cds_end
                         ),
                     )
                 )
@@ -233,7 +234,7 @@ def main():
     start_time = time.time()
 
     print(f"{fGetTime()} Finding mutations...")
-    with AlignmentFile(input_file, "rb", threads=os.cpu_count()) as bam:
+    with pysam.AlignmentFile(input_file, "rb", threads=os.cpu_count()) as bam:
         if args.contig:
             contig = args.contig
         else:

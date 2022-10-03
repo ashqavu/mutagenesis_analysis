@@ -3,7 +3,7 @@
 #SBATCH -p 256GBv1
 #SBATCH -e %a.err
 #SBATCH -o %a.out
-#SBATCH -t 1:30:0
+#SBATCH -t 0:30:0
 
 #SBATCH --mail-type NONE
 
@@ -16,12 +16,12 @@ GENE=$2
 
 NUMCORES="$(nproc)"
 FLASH="/work/greencenter/s426833/TEM-1/flash"
-REF_FOLDER="/work/greencenter/s426833/TEM-1/ref_data"
+#TODO: change hard-coded path references
+REF_FOLDER="/work/greencenter/s426833/TEM-1/ref_data" 
 REF_GBK="$REF_FOLDER/pBR322_AvrII_rc.gbk"
 SCRIPT_PATH="/work/greencenter/s426833/TEM-1/src/sequence_mapping.py"
 
 export BOWTIE2_INDEXES="$REF_FOLDER/pBR322_bowtie_index"
-export PYTHONPATH="$PYTHONPATH:/work/greencenter/s426833/TEM-1/src"
 
 SAMPLE_NAMES=$INPUTFOLDER/raw_data/SampleNames.txt
 if ! grep -o "^$SLURM_ARRAY_TASK_ID\s.*\w" $SAMPLE_NAMES; then

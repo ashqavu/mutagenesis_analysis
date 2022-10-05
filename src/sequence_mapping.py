@@ -101,9 +101,7 @@ def mutation_finder(alignments, gene):
                         aln.query_sequence[query_pos],
                         aln.query_qualities[query_pos],
                         aln.query_sequence,
-                        aln.get_overlap(
-                            start=cds_start, end=cds_end
-                        ),
+                        aln.get_overlap(start=cds_start, end=cds_end),
                     )
                 )
     return mutations
@@ -180,30 +178,30 @@ def find_multiple_mutants(df):
     return df_multiples, df_singles
 
 
-def count_mutations(df, gene, quality_filter=30):
-    # do a quality check first
-    df_quality_filter = df.query("base_quality >= @quality_filter")
-    print(
-        f"{df_quality_filter.shape[0] / df.shape[0]:.2%} of all mutations found passed with quality scores >= {quality_filter}"
-    )
-    # then filter redundant mutations (when all mutated bases are in same codon)
-    df_quality_filter = df_quality_filter.drop_duplicates(["read_id", "aa_pos"])
+def count_mutations(df, gene):
+    #! changed df input to be already filtered
+    # filter redundant mutations (when all mutated bases are in same codon)
+    df = df.drop_duplicates(["read_id", "aa_pos"])
 
-    df_multiples, df_singles = find_multiple_mutants(df_quality_filter)
+    df_multiples, df_singles = find_multiple_mutants(df)
     num_singles = df_singles.shape[0]
-    num_multiples = df_multiples["read_id"].unique().shape[0]    
+    num_multiples = df_multiples["read_id"].unique().shape[0]
 
     print(f"Number of reads with one mutation passing quality check: {num_singles:,}")
     print(
         f"Number of reads with multiple mutations passing quality check: {num_multiples:,}"
     )
-    print(f"Number of single mutants in CDS region: {df_singles.dropna().shape[0]:,}")
+    print(
+        f"Number of single mutants in CDS region passing quality check: {df_singles.dropna().shape[0]:,}"
+    )
 
     df_counts = pd.DataFrame(
         index=np.arange(len(gene.cds_translation)),
         columns=list(IUPACData.protein_letters + "*∅"),
     )
-    for (pos, aa), count in df_singles.groupby(["aa_pos", "query_aa"], observed=True).size().items():
+    for (pos, aa), count in (
+        df_singles.groupby(["aa_pos", "query_aa"], observed=True).size().items()
+    ):
         if gene.cds_translation[pos] == aa:
             df_counts.loc[pos, "∅"] = count
         else:
@@ -230,7 +228,13 @@ def main():
         output_folder = args.output
     else:
         output_folder = input_folder / "results"
-
+    
+    # make sure folders exists
+    if not os.path.exists(output_folder / "counts"):
+        os.makedirs(output_folder / "counts")
+    if not os.path.exists(output_folder / "mutations/quality_filtered/seq_lengths"):
+        os.makedirs(output_folder / "mutations/quality_filtered/seq_lengths")
+        
     start_time = time.time()
 
     print(f"{fGetTime()} Finding mutations...")
@@ -256,14 +260,47 @@ def main():
     df_mutations = read_mutations(mutations, gene)
     df_mutations.name = sample_name
     df_mutations.to_csv(
-        output_folder / f"mutations/{sample_name}_mutations.tsv", index=False, sep="\t"
+        output_folder / f"mutations/{sample_name}_all_mutations.tsv", index=False, sep="\t"
     )
-    df_mutations.to_pickle(output_folder / f"mutations/{sample_name}_mutations.pkl")
+    df_mutations.to_pickle(output_folder / f"mutations/{sample_name}_all_mutations.pkl")
+
+    # do a quality check
+    df_quality_filter = df_mutations.query("base_quality >= @quality_filter")
+    print(
+        f"{df_quality_filter.shape[0] / df_mutations.shape[0]:.2%} of all mutations found passed with quality scores >= {quality_filter}"
+    )
+    df_quality_filter.to_csv(
+        output_folder / f"mutations/quality_filtered/{sample_name}_filtered_mutations.tsv",
+        index=False,
+        sep="\t",
+    )
+    df_quality_filter.to_pickle(
+        output_folder / f"mutations/quality_filtered/{sample_name}_filtered_mutations.pkl"
+    )
+    print(f"{fGetTime()} Done")
+
+    print(f"{fGetTime()} Calculating lengths of mapped query sequences...")
+    df_read_lengths = (
+        df_quality_filter[["read_id", "query_seq"]]
+        .drop_duplicates("read_id")
+        .set_index("read_id")["query_seq"]
+        .transform(len)
+    )
+    df_read_lengths.name = sample_name
+    df_read_lengths.to_csv(
+        output_folder / f"mutations/quality_filtered/seq_lengths/{sample_name}_filtered_seq_lengths.tsv",
+        index=False,
+        sep="\t",
+    )
+    df_read_lengths.to_pickle(
+        output_folder / f"mutations/quality_filtered/seq_lengths/{sample_name}_filtered_seq_lengths.pkl"
+    )
     print(f"{fGetTime()} Done")
 
     print(f"{fGetTime()} Calculating mutation counts...")
-    df_counts, num_singles, num_multiples = count_mutations(df_mutations, gene, quality_filter)
-    with open(output_folder / "multiple_mutants.tsv", "a") as f:
+    # ! analysis performed on prefiltered data
+    df_counts, num_singles, num_multiples = count_mutations(df_quality_filter, gene)
+    with open(output_folder / "mutations/quality_filtered/multiple_mutants.tsv", "a") as f:
         f.write(f"{sample_name}\t{num_singles}\t{num_multiples}\n")
     df_counts.to_csv(output_folder / f"counts/{sample_name}_counts.tsv", sep="\t")
     df_counts.to_pickle(output_folder / f"counts/{sample_name}_counts.pkl")

@@ -64,7 +64,7 @@ def histogram_mutation_counts(SequencingData):
             log_values = counts_values.where(
                 counts_values.lt(1), np.log10(counts_values)
             )
-        log_values = log_values.where(log_values != 0.01, np.nan).values.ravel()
+        log_values = log_values.where(log_values != 0.01, np.nan).values.flatten()
         # * // total number of mutants specific to TEM-1 library
         pct_missing = num_missing / 4997
         ax = axes[i]
@@ -84,7 +84,7 @@ def histogram_mutation_counts(SequencingData):
         ax.tick_params(direction="in", labelsize=7)
         ax.set_title(sample, fontsize=12, fontweight="bold")
 
-        counts_values = counts_values.query("@counts_values.ge(1)").values.ravel()
+        counts_values = counts_values.query("@counts_values.ge(1)").values.flatten()
         counts_values = np.extract(np.isfinite(counts_values), counts_values)
         mean, _ = norm.fit(counts_values)
         text_mean = (
@@ -394,3 +394,52 @@ def heatmap_draw(
     cbar.ax.spines["outline"].set_lw(0.4)
     cbar.ax.tick_params(right=False, left=False, labelsize=4, length=0, pad=3)
     return fig
+
+def relabel_axis(fig, gene, orientation="horizontal"):
+    """
+    Here we relabel the position-axis of the heatmap figure to use the Ambler numbering system.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure
+        Parent figure of all the heatmap axes
+    gene : plasmid_map.Gene
+        Gene object that holds a numbering system attribute
+    orientation : str, optional
+        Whether the heatmaps are drawn horizontally or vertically, by default "horizontal"
+
+    Returns
+    -------
+    None
+    """
+    
+    df_wt = heatmap_masks(gene).loc[285]
+    if orientation == "vertical":
+        fig.axes[0].set_yticklabels(
+            np.take(gene.ambler_numbering, (fig.axes[0].get_yticks() - 0.5).astype("int64"))
+        )
+        for ax in fig.axes[:-1]:
+            data = ax.collections[0].get_array().data.reshape(287, 22)
+            def format_coord(x, y):
+                df_wt = heatmap_masks(gene)
+                x = np.floor(x).astype("int")
+                y = np.floor(y).astype("int")
+                residue = df_wt.columns[x]
+                pos = np.take(gene.ambler_numbering, y)
+                value = data[y, x].round(4)
+                return f"position: {pos}, residue: {residue}, value: {value}"
+            ax.format_coord = format_coord
+    elif orientation == "horizontal":
+        fig.axes[0].set_xticklabels(
+            np.take(gene.ambler_numbering, (fig.axes[0].get_xticks() - 0.5).astype("int64"))
+        )
+        for ax in fig.axes[:-1]:
+            data = ax.collections[0].get_array().data.reshape(22, 287)
+            def format_coord(x, y):
+                x = np.floor(x).astype("int")
+                y = np.floor(y).astype("int")
+                residue = df_wt.columns[y]
+                pos = np.take(gene.ambler_numbering, x)
+                value = data[y, x].round(4)
+                return f"position: {pos}, residue: {residue}, value: {value}"
+            ax.format_coord = format_coord

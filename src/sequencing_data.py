@@ -185,24 +185,23 @@ class SequencingData:
             Will not be able to calculate enrichment properly if there is more than one untreated sample to compare frequencies to
         """
         samples = frequencies.keys()
-        treatments = self._get_treatments(samples)
         untreated = [x for x in samples if "UT" in x]
         num_untreated = len(untreated)
         if num_untreated > 1:
             raise LookupError("More than one untreated sample found in dataset")
-
-        treated = [x for x in treatments if "UT" not in x]
+        
+        treated = [x for x in samples if "UT" not in x]
         enrichment = dict.fromkeys(treated)
-        df_untreated = [frequencies[x] for x in samples if "UT" in x][0]
-        for treatment in treatments:
-            if "UT" in treatment:
+        df_untreated = frequencies[untreated[0]]
+        for sample in samples:
+            if "UT" in sample:
                 continue
-            df_treated = [frequencies[x] for x in samples if treatment in x][0]
+            df_treated = frequencies[sample]
             df_enriched = df_treated.divide(df_untreated)
             with np.errstate(divide="ignore"):
                 df_enriched = df_enriched.where(df_enriched == 0, np.log10)
-            df_enriched.name = treatment
-            enrichment[treatment] = df_enriched
+                df_enriched.name = sample
+                enrichment[sample] = df_enriched
         return enrichment
 
     def _get_fitness(self, enrichment: dict) -> dict:
@@ -226,24 +225,24 @@ class SequencingData:
             Will not be able to calculate enrichment properly (and thus fitness) if there is more than one untreated sample to compare frequencies to
         """
         samples = enrichment.keys()
-        treatments = self._get_treatments(samples)
+        # treatments = self._get_treatments(samples)
         untreated = [x for x in samples if "UT" in x]
         num_untreated = len(untreated)
         if num_untreated > 1:
             raise LookupError("More than one untreated sample found in dataset")
 
-        treatments = [x for x in treatments if "UT" not in x]
-        fitness = dict.fromkeys(treatments)
+        # treatments = [x for x in treatments if "UT" not in x]
+        fitness = dict.fromkeys(samples)
 
-        for treatment in treatments:
-            if "UT" in treatment:
+        for sample in samples:
+            if "UT" in sample:
                 continue
-            df_enriched = enrichment[treatment]
+            df_enriched = enrichment[sample]
             SynWT_enrichment = df_enriched["∅"]
             SynWT_mean, _ = norm.fit(SynWT_enrichment.dropna())
             normalized = df_enriched - SynWT_mean
-            normalized.name = treatment
-            fitness[treatment] = normalized
+            normalized.name = sample
+            fitness[sample] = normalized
         return fitness
 
     @property

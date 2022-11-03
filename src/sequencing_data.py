@@ -48,7 +48,7 @@ class SequencingData:
                 line = line.rstrip()
                 name = line.split("\t")[1]
                 samples.append(name)
-        return samples
+        return natsorted(samples)
 
     def copy(self):
         """

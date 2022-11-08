@@ -158,6 +158,7 @@ def heatmap_wrapper(
     cbar_ax=None,
     vmin=-2,
     vmax=2,
+    fitness_cmap="vlag",
     orientation="horizontal",
 ):
     """
@@ -183,6 +184,8 @@ def heatmap_wrapper(
         For fitness data, vmin parameter passed to sns.heatmap, by default -2
     vmax : int, optional
         For fitness data, vmax parameter passed to sns.heatmap, by default 2
+    fitness_cmap : str, optional
+        Colormap to use for fitness heatmap, by default "vlag"
     orientation : str, optional
         Whether to draw heatmaps vertically or horizontally, by default "horizontal"
 
@@ -303,8 +306,8 @@ def heatmap_draw(
     gene,
     vmin=-2,
     vmax=2,
-    orientation="horizontal",
-    figwidth=5,
+    fitness_cmap="vlag",
+    orientation="horizontal"
 ):
     """
     Draw a heatmap of a dataset
@@ -322,10 +325,10 @@ def heatmap_draw(
         For fitness data, vmin parameter passed to sns.heatmap, by default -2
     vmax : int, optional
         For fitness data, vmax parameter passed to sns.heatmap, by default 2
+    fitness_cmap : str, optional
+        Colormap to use for fitness heatmap, by default "vlag"
     orientation : str, optional
         Whether to draw heatmaps vertically or horizontally, by default "horizontal"
-    figwidth : int, optional
-        Figure width, by default 5
 
     Returns
     -------
@@ -367,6 +370,7 @@ def heatmap_draw(
                 ax=axs[i],
                 vmin=vmin,
                 vmax=vmax,
+                fitness_cmap=fitness_cmap,
                 orientation=orientation,
             )
     if orientation == "horizontal":
@@ -390,6 +394,7 @@ def heatmap_draw(
         fraction=0.1,
         anchor="NW",
         location=cbar_location,
+        use_gridspec=True
     )
     cbar.ax.spines["outline"].set_lw(0.4)
     cbar.ax.tick_params(right=False, left=False, labelsize=4, length=0, pad=3)

@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+import re
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -7,6 +9,7 @@ from Bio.Data import IUPACData
 from matplotlib.offsetbox import AnchoredText
 from matplotlib.patches import Rectangle
 from scipy.stats import norm
+from sequencing_data import filter_fitness_read_noise
 
 
 def heatmap_table(gene):
@@ -24,7 +27,6 @@ def heatmap_masks(gene):
     for position, residue in enumerate(gene.cds_translation):
         df_wt.loc[position, residue] = True
     return df_wt
-
 
 def respine(ax):
     """
@@ -272,7 +274,7 @@ def heatmap_wrapper(
             fontsize=fontsize,
             fontfamily="monospace",
             rotation=rotation,
-            clip_on=True
+            clip_on=True,
         )
     respine(h)
     # * reformat coordinate labeler
@@ -301,17 +303,20 @@ def heatmap_wrapper(
 
 
 def heatmap_draw(
-    df_dict: dict,
+    counts_dict: dict,
+    fitness_dict: dict,
     dataset: str,
     gene,
+    read_threshold=1,
     vmin=-2,
     vmax=2,
     fitness_cmap="vlag",
-    orientation="horizontal"
+    orientation="horizontal",
 ):
     """
     Draw a heatmap of a dataset
-    # TODO: consider re-adding figure to make a missing chart, but perhaps not really necessary
+    # TODO: Consider re-adding figure to make a missing chart, but perhaps not really necessary
+    # TODO: Add read_threshold parameter or change fitness attribute to be filtered
 
     Parameters
     ----------
@@ -335,22 +340,50 @@ def heatmap_draw(
     fig
         matplotlib.Figure
     """
-    num_columns = len(df_dict)
-    num_rows = 1
-    cbar_location = "right"
+
+    params_counts = {
+        "df_dict": counts_dict,
+        "num_columns": len(counts_dict),
+        "num_rows": 1,
+        "suptitle": "Raw counts of mutations ($log_{10}$)",
+    }
+    params_fitness = {
+        "df_dict": fitness_dict,
+        "num_columns": len(fitness_dict),
+        "num_rows": 1,
+        "suptitle": "Fitness values",
+    }
+    if dataset == "counts":
+        df_dict, num_columns, num_rows, suptitle = params_counts.values()
+    elif dataset == "fitness":
+        df_dict, num_columns, num_rows, suptitle = params_fitness.values()
+        df_dict = fitness_dict_filter = {
+        key: filter_fitness_read_noise(
+            key, counts_dict, fitness_dict, gene, read_threshold=read_threshold
+        )
+        for key in sorted(fitness_dict)
+    }
+
     if orientation == "horizontal":
         num_columns, num_rows = num_rows, num_columns
         cbar_location = "bottom"
+    else:
+        cbar_location = "right"
+
     fig, axs = plt.subplots(
-        num_rows, num_columns, figsize=(5, 12), dpi=300, layout="compressed", sharex=True, sharey=True
+        num_rows,
+        num_columns,
+        figsize=(5, 12),
+        dpi=300,
+        layout="compressed",
+        sharex=True,
+        sharey=True,
     )
-    if dataset == "counts":
-        fig.suptitle("Raw counts of mutations ($log_{10}$)", fontweight="bold")
-    elif dataset == "fitness":
-        fig.suptitle("Fitness values", fontweight="bold")
+    fig.suptitle(suptitle, fontweight="bold")
 
     # * plot each data one by one
-    for i, (sample, data) in enumerate(df_dict.items()):
+    for i, sample in enumerate(sorted(df_dict)):
+        data = df_dict[sample]
         # * function-provided styling for heatmap
         if dataset == "counts":
             heatmap_wrapper(
@@ -382,23 +415,28 @@ def heatmap_draw(
             )
         fig.axes[0].tick_params(labeltop=True)
         fig.set_figheight(height + 1)
+        pad = fig.get_layout_engine().get()["hspace"] / 2
     elif orientation == "vertical":
         for ax in fig.axes:
             ax.tick_params(labelbottom=True)
         fig.axes[0].tick_params(labelleft=True)
         fig.set_figheight(fig.get_tightbbox().height)
+        pad = fig.get_layout_engine().get()["wspace"] / 2
     cbar = fig.colorbar(
         axs[0].collections[0],
         ax=fig.axes,
         shrink=0.2,
         fraction=0.1,
+        # pad=0.05,
+        pad=pad,
         anchor="NW",
         location=cbar_location,
-        use_gridspec=True
+        use_gridspec=True,
     )
     cbar.ax.spines["outline"].set_lw(0.4)
     cbar.ax.tick_params(right=False, left=False, labelsize=4, length=0, pad=3)
     return fig
+
 
 def relabel_axis(fig, gene, orientation="horizontal"):
     """
@@ -417,14 +455,17 @@ def relabel_axis(fig, gene, orientation="horizontal"):
     -------
     None
     """
-    
+
     df_wt = heatmap_masks(gene).loc[285]
     if orientation == "vertical":
         fig.axes[0].set_yticklabels(
-            np.take(gene.ambler_numbering, (fig.axes[0].get_yticks() - 0.5).astype("int64"))
+            np.take(
+                gene.ambler_numbering, (fig.axes[0].get_yticks() - 0.5).astype("int64")
+            )
         )
         for ax in fig.axes[:-1]:
             data = ax.collections[0].get_array().data.reshape(287, 22)
+
             def format_coord(x, y):
                 df_wt = heatmap_masks(gene)
                 x = np.floor(x).astype("int")
@@ -433,13 +474,17 @@ def relabel_axis(fig, gene, orientation="horizontal"):
                 pos = np.take(gene.ambler_numbering, y)
                 value = data[y, x].round(4)
                 return f"position: {pos}, residue: {residue}, value: {value}"
+
             ax.format_coord = format_coord
     elif orientation == "horizontal":
         fig.axes[0].set_xticklabels(
-            np.take(gene.ambler_numbering, (fig.axes[0].get_xticks() - 0.5).astype("int64"))
+            np.take(
+                gene.ambler_numbering, (fig.axes[0].get_xticks() - 0.5).astype("int64")
+            )
         )
         for ax in fig.axes[:-1]:
             data = ax.collections[0].get_array().data.reshape(22, 287)
+
             def format_coord(x, y):
                 x = np.floor(x).astype("int")
                 y = np.floor(y).astype("int")
@@ -447,4 +492,78 @@ def relabel_axis(fig, gene, orientation="horizontal"):
                 pos = np.take(gene.ambler_numbering, x)
                 value = data[y, x].round(4)
                 return f"position: {pos}, residue: {residue}, value: {value}"
+
             ax.format_coord = format_coord
+
+
+def histogram_fitness_wrapper(sample, fitness_dict, bins, ax=None):
+    if ax is None:
+        ax = plt.gca()
+    df_fitness = fitness_dict[sample]
+    # selecting missense mutantions
+    values_missense_filtered = df_fitness.drop(["*", "∅"], axis=1).values.flatten()
+    # synonymous mutants
+    values_syn_filtered = df_fitness["∅"].values.flatten()
+    # stop mutations
+    values_stop_filtered = df_fitness["*"].values.flatten()
+
+    sns.histplot(
+        values_missense_filtered,
+        bins=bins,
+        ax=ax,
+        color="gray",
+        label="missense mutations",
+    )
+    sns.histplot(
+        values_syn_filtered,
+        bins=bins,
+        ax=ax,
+        color="palegreen",
+        alpha=0.6,
+        label="synonymous mutations",
+    )
+    sns.histplot(
+        values_stop_filtered,
+        bins=bins,
+        ax=ax,
+        color="lightcoral",
+        alpha=0.6,
+        label="stop mutations",
+    )
+
+    ax.set_title(sample, fontweight="bold")
+    ax.set_xlabel("distribution of fitness effects")
+    ax.set_ylabel("counts", weight="bold")
+
+
+def histogram_fitness_draw(counts_dict, fitness_dict, gene, read_threshold=1):
+    samples = [key for key in sorted(fitness_dict)]
+    num_subplots = len(samples)
+    num_rows = num_columns = int(np.round(np.sqrt(num_subplots)))
+    if num_subplots / num_rows > num_rows:
+        num_columns = num_rows + 1
+
+    fitness_dict_filter = {
+        sample: filter_fitness_read_noise(
+            sample, counts_dict, fitness_dict, gene, read_threshold=read_threshold
+        )
+        for sample in samples
+    }
+    values_fitness_all = np.concatenate(
+        [fitness_dict_filter[sample] for sample in samples]
+    )
+    bins = np.linspace(np.nanmin(values_fitness_all), np.nanmax(values_fitness_all), 51)
+    with sns.axes_style("whitegrid"):
+        fig_dfe_all, axes = plt.subplots(
+            num_rows,
+            num_columns,
+            figsize=(10, 8),
+            sharex=True,
+            sharey=True,
+            layout="constrained",
+        )
+        for i, sample in enumerate(samples):
+            ax = axes.flat[i]
+            histogram_fitness_wrapper(sample, fitness_dict_filter, bins, ax=ax)
+        fig_dfe_all.get_layout_engine().set(hspace=0.1)
+    return fig_dfe_all

@@ -14,6 +14,7 @@ from natsort import natsorted
 from scipy.stats import norm
 
 import plasmid_map
+from visualization import heatmap_masks
 
 
 class SequencingData:
@@ -488,3 +489,21 @@ class SequencingDataSublibraries:
     @property
     def enrichment(self):
         raise AttributeError("Enrichment data cannot be accurately represented in combined dataframes, see 'fullset' attribute")
+
+def match_treated_untreated(sample):
+    num = re.sub(r"[A-Za-z]*", "", sample)
+    return "UT" + num
+
+
+def filter_fitness_read_noise(
+    treated, counts_dict, fitness_dict, gene, read_threshold=1
+):
+    untreated = match_treated_untreated(treated)
+    df_counts_treated = counts_dict[treated]
+    df_counts_untreated = counts_dict[untreated]
+    df_treated_filtered = fitness_dict[treated].where(
+        df_counts_treated.ge(read_threshold)
+        & df_counts_untreated.ge(read_threshold)
+        & ~heatmap_masks(gene)
+    )
+    return df_treated_filtered

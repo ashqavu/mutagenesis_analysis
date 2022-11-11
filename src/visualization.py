@@ -9,7 +9,25 @@ from Bio.Data import IUPACData
 from matplotlib.offsetbox import AnchoredText
 from matplotlib.patches import Rectangle
 from scipy.stats import norm
-from sequencing_data import filter_fitness_read_noise
+
+
+def match_treated_untreated(sample):
+    num = re.sub(r"[A-Za-z]*", "", sample)
+    return "UT" + num
+
+
+def filter_fitness_read_noise(
+    treated, counts_dict, fitness_dict, gene, read_threshold=1
+):
+    untreated = match_treated_untreated(treated)
+    df_counts_treated = counts_dict[treated]
+    df_counts_untreated = counts_dict[untreated]
+    df_treated_filtered = fitness_dict[treated].where(
+        df_counts_treated.ge(read_threshold)
+        & df_counts_untreated.ge(read_threshold)
+        & ~heatmap_masks(gene)
+    )
+    return df_treated_filtered
 
 
 def heatmap_table(gene):
@@ -27,6 +45,7 @@ def heatmap_masks(gene):
     for position, residue in enumerate(gene.cds_translation):
         df_wt.loc[position, residue] = True
     return df_wt
+
 
 def respine(ax):
     """
@@ -203,7 +222,7 @@ def heatmap_wrapper(
             vmin = None
             vmax = None
     elif dataset == "fitness":
-        cmap = "vlag"
+        cmap = fitness_cmap
 
     xticklabels, yticklabels = 1, 10
     df_wt = heatmap_masks(gene)
@@ -358,11 +377,11 @@ def heatmap_draw(
     elif dataset == "fitness":
         df_dict, num_columns, num_rows, suptitle = params_fitness.values()
         df_dict = fitness_dict_filter = {
-        key: filter_fitness_read_noise(
-            key, counts_dict, fitness_dict, gene, read_threshold=read_threshold
-        )
-        for key in sorted(fitness_dict)
-    }
+            key: filter_fitness_read_noise(
+                key, counts_dict, fitness_dict, gene, read_threshold=read_threshold
+            )
+            for key in sorted(fitness_dict)
+        }
 
     if orientation == "horizontal":
         num_columns, num_rows = num_rows, num_columns

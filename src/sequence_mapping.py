@@ -10,6 +10,7 @@ import pandas as pd
 import pysam
 from Bio.Data import CodonTable, IUPACData
 from tqdm import tqdm
+from natsort import natsorted
 
 from plasmid_map import Gene
 
@@ -199,6 +200,7 @@ def count_mutations(df, gene):
         index=np.arange(len(gene.cds_translation)),
         columns=list(IUPACData.protein_letters + "*∅"),
     )
+    # ! only counting single mutants
     for (pos, aa), count in (
         df_singles.groupby(["aa_pos", "query_aa"], observed=True).size().items()
     ):
@@ -228,16 +230,16 @@ def main():
         output_folder = args.output
     else:
         output_folder = input_folder / "results"
-    
+
     # make sure folders exists
     if not os.path.exists(output_folder / "counts"):
         os.makedirs(output_folder / "counts")
     if not os.path.exists(output_folder / "mutations/quality_filtered/seq_lengths"):
         os.makedirs(output_folder / "mutations/quality_filtered/seq_lengths")
-        
+
     start_time = time.time()
 
-    print(f"{fGetTime()} Finding mutations...")
+    print(f"{fGetTime()} Finding mutations for {sample_name}...")
     with pysam.AlignmentFile(input_file, "rb", threads=os.cpu_count()) as bam:
         if args.contig:
             contig = args.contig
@@ -260,25 +262,30 @@ def main():
     df_mutations = read_mutations(mutations, gene)
     df_mutations.name = sample_name
     df_mutations.to_csv(
-        output_folder / f"mutations/{sample_name}_all_mutations.tsv", index=False, sep="\t"
+        output_folder / f"mutations/{sample_name}_all_mutations.tsv",
+        index=False,
+        sep="\t",
     )
     df_mutations.to_pickle(output_folder / f"mutations/{sample_name}_all_mutations.pkl")
 
     # do a quality check
     df_quality_filter = df_mutations.query("base_quality >= @quality_filter")
     print(
-        f"{df_quality_filter.shape[0] / df_mutations.shape[0]:.2%} of all mutations found passed with quality scores >= {quality_filter}"
+        f"{df_quality_filter.shape[0] / df_mutations.shape[0]:.2%} of all nucleotide mutations found passed with quality scores >= {quality_filter}"
     )
     df_quality_filter.to_csv(
-        output_folder / f"mutations/quality_filtered/{sample_name}_filtered_mutations.tsv",
+        output_folder
+        / f"mutations/quality_filtered/{sample_name}_filtered_mutations.tsv",
         index=False,
         sep="\t",
     )
     df_quality_filter.to_pickle(
-        output_folder / f"mutations/quality_filtered/{sample_name}_filtered_mutations.pkl"
+        output_folder
+        / f"mutations/quality_filtered/{sample_name}_filtered_mutations.pkl"
     )
     print(f"{fGetTime()} Done")
 
+    # ! analysis performed on prefiltered data
     print(f"{fGetTime()} Calculating lengths of mapped query sequences...")
     df_read_lengths = (
         df_quality_filter[["read_id", "query_seq"]]
@@ -288,20 +295,42 @@ def main():
     )
     df_read_lengths.name = sample_name
     df_read_lengths.to_csv(
-        output_folder / f"mutations/quality_filtered/seq_lengths/{sample_name}_filtered_seq_lengths.tsv",
+        output_folder
+        / f"mutations/quality_filtered/seq_lengths/{sample_name}_filtered_seq_lengths.tsv",
         index=False,
         sep="\t",
     )
     df_read_lengths.to_pickle(
-        output_folder / f"mutations/quality_filtered/seq_lengths/{sample_name}_filtered_seq_lengths.pkl"
+        output_folder
+        / f"mutations/quality_filtered/seq_lengths/{sample_name}_filtered_seq_lengths.pkl"
     )
     print(f"{fGetTime()} Done")
 
     print(f"{fGetTime()} Calculating mutation counts...")
-    # ! analysis performed on prefiltered data
     df_counts, num_singles, num_multiples = count_mutations(df_quality_filter, gene)
-    with open(output_folder / "mutations/quality_filtered/multiple_mutants.tsv", "a") as f:
+    with open(
+        output_folder / "mutations/quality_filtered/multiple_mutants.tsv", "r"
+    ) as f:
+        header = "sample_name\tnum_singles\tnum_multiples\n"
+        if f.readline() != header:
+            with open(
+                output_folder / "mutations/quality_filtered/multiple_mutants.tsv", "a"
+            ) as f:
+                f.write(header)
+    with open(
+        output_folder / "mutations/quality_filtered/multiple_mutants.tsv", "a"
+    ) as f:
         f.write(f"{sample_name}\t{num_singles}\t{num_multiples}\n")
+    with open(
+        output_folder / "mutations/quality_filtered/multiple_mutants.tsv", "r"
+    ) as f:
+        sorted_lines = "".join(natsorted(f.readlines()[1:]))
+    # ! not sure if this works, check this
+    with open(
+        output_folder / "mutations/quality_filtered/multiple_mutants.tsv", "w"
+    ) as f:
+        f.write(header)
+        f.write(sorted_lines)
     df_counts.to_csv(output_folder / f"counts/{sample_name}_counts.tsv", sep="\t")
     df_counts.to_pickle(output_folder / f"counts/{sample_name}_counts.pkl")
     print(f"{fGetTime()} Done")

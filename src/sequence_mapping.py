@@ -1,4 +1,9 @@
 #!/usr/bin/env python
+"""
+This script takes alignments in BAM format and then uses a GenBank sequence as reference
+for finding mutations. All mutations, counts, and other results are reported as .csv tables
+in an output folder.
+"""
 import argparse
 import os
 import sys
@@ -16,6 +21,9 @@ from plasmid_map import Gene
 
 
 def parse_args():
+    """
+    Argument parser
+    """
     parser = argparse.ArgumentParser(
         description="Finds nucleotide changes in an indexed in.bam file.",
         add_help=False,
@@ -37,7 +45,9 @@ def parse_args():
         "-c",
         "--contig",
         type=str,
-        help="Input reference contig. Analysis defaults to the first contig name found in the SAM header, so these options need to be specified to search for a different region.",
+        help="Input reference contig. Analysis defaults to the first contig name \
+            found in the SAM header, so these options need to be specified to search \
+            for a different region.",
         required=False,
     )
     optional_args.add_argument(
@@ -64,11 +74,32 @@ stop_codons = CodonTable.standard_dna_table.stop_codons
 translation_table.update({stop_codon: "*" for stop_codon in stop_codons})
 
 
-def fGetTime():
+def fGetTime() -> str:
+    """
+    Returns
+    -------
+    str
+        Get current time
+    """
     return f"""[{time.strftime("%H:%M:%S")}]"""
 
 
-def mutation_finder(alignments, gene):
+def mutation_finder(alignments, gene: Gene) -> list:
+    """
+    Find all mutations present in all alignments using Gene as reference
+
+    Parameters
+    ----------
+    alignments : iterable
+        Alignments to find mutations for
+    gene : Gene
+        Gene providing reference coding sequence
+
+    Returns
+    -------
+    mutations : list
+        All mutations found in alignments
+    """
     cds_start = gene.cds.location.start
     cds_end = gene.cds.location.end
     insertions = []
@@ -76,7 +107,7 @@ def mutation_finder(alignments, gene):
     wildtypes = []
     mutations = []
     for aln in alignments:
-        # record and discard indels (mostly deletions from AT-rich regions of gene)
+        # * record and discard indels (mostly deletions from AT-rich regions of gene)
         if any(a == 1 for a, _ in aln.cigartuples):
             insertions.append(aln)
             continue
@@ -84,13 +115,13 @@ def mutation_finder(alignments, gene):
             deletions.append(aln)
             continue
 
-        # iterate over aligned pairs to find mutation
+        # * iterate over aligned pairs to find mutation
         aligned_pairs = aln.get_aligned_pairs(matches_only=True, with_seq=True)
-        # lowercase letter indicates substitution
+        # * lowercase letter indicates substitution
         if aln.get_reference_sequence().isupper():
             wildtypes.append(aln)
             continue
-        # proceed along sequence until the CDS region
+        # * proceed along sequence until the CDS region
         for query_pos, ref_pos, ref_base in aligned_pairs:
             if ref_base.islower():
                 mutations.append(
@@ -108,7 +139,23 @@ def mutation_finder(alignments, gene):
     return mutations
 
 
-def read_mutations(mutations, gene):
+def read_mutations(mutations: list, gene: Gene) -> pd.DataFrame:
+    """
+    Take list of nucleotide mutations found and determine query/reference codons,
+    amino acids, reference positions, etc.
+
+    Parameters
+    ----------
+    mutations : list
+        Nucleotide retrieved from alignment files
+    gene : Gene
+        Gene with wild-type sequences
+
+    Returns
+    -------
+    df : pd.DataFrame
+        Mutation table
+    """
     df = pd.DataFrame(
         mutations,
         columns=[
@@ -134,7 +181,7 @@ def read_mutations(mutations, gene):
     )
     df = df.astype({"ref_base": "category", "query_base": "category"})
 
-    # find position of codon's residue in protein
+    # * find position of codon's residue in protein
     df["aa_pos"] = (
         df["ref_pos"].sub(gene.cds.location.start).floordiv(3).astype("Int16")
     )
@@ -142,9 +189,9 @@ def read_mutations(mutations, gene):
         df["aa_pos"].map(gene.cds_codon_dict).astype("string").astype("category")
     )
     df["ref_aa"] = df["ref_codon"].map(translation_table).astype("category")
-    # pull up position for the first base of the codon of the nucleotide
+    # * pull up position for the first base of the codon of the nucleotide
     df["codon_pos"] = df["aa_pos"].map(gene.codon_starts).astype("Int16")
-    # adjust the codon position from the read to set the reading frame
+    # * adjust the codon position from the read to set the reading frame
     df["query_codon_pos"] = df["query_pos"].add(df["codon_pos"] - df["ref_pos"])
     df["query_codon"] = [
         seq[pos : pos + 3] if pd.notnull(pos) else pd.NA
@@ -173,15 +220,46 @@ def read_mutations(mutations, gene):
     return df
 
 
-def find_multiple_mutants(df):
+def find_multiple_mutants(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Divide DataFrame into read ids with multiple mutations found and read ids with single
+    mutations
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Mutation table
+
+    Returns
+    -------
+    df_multiples, df_singles : tuple[pd.DataFrame, pd.DataFrame]
+    """
     df_multiples = df[df.duplicated("read_id", keep=False)]
     df_singles = df.drop_duplicates("read_id", keep=False)
     return df_multiples, df_singles
 
 
-def count_mutations(df, gene):
-    #! changed df input to be already filtered
-    # filter redundant mutations (when all mutated bases are in same codon)
+def count_mutations(df: pd.DataFrame, gene: Gene) -> tuple[pd.DataFrame, int, int]:
+    """
+    Count up how many of each mutant are present in mutation table and present as a
+    single DataFrame. Also determine how many single mutants and how many multiple
+    mutants are present
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Mutation table
+    gene : Gene
+        Gene with wild-type sequences
+
+    Returns
+    -------
+    df_counts, num_singles, num_mutants : tuple[pd.DataFrame, int, int]
+        DataFrame with count values for each mutation as well as the number of single
+        mutants and the number of multiple mutants
+    """
+    # * filter redundant mutations (when all mutated bases are in same codon)
+    # TODO: change to group the multiple mutations into one record instead of straight dropping
     df = df.drop_duplicates(["read_id", "aa_pos"])
 
     df_multiples, df_singles = find_multiple_mutants(df)
@@ -193,7 +271,8 @@ def count_mutations(df, gene):
         f"Number of reads with multiple mutations passing quality check: {num_multiples:,}"
     )
     print(
-        f"Number of single mutants in CDS region passing quality check: {df_singles.dropna().shape[0]:,}"
+        f"Number of single mutants in CDS region passing quality check: \
+            {df_singles.dropna().shape[0]:,}"
     )
 
     df_counts = pd.DataFrame(
@@ -214,7 +293,10 @@ def count_mutations(df, gene):
     return df_counts, num_singles, num_multiples
 
 
-def main():
+def main() -> None:
+    """
+    Main function
+    """
     args = parse_args()
     gene = Gene(args.ref, args.gene)
 
@@ -271,7 +353,9 @@ def main():
     # do a quality check
     df_quality_filter = df_mutations.query("base_quality >= @quality_filter")
     print(
-        f"{df_quality_filter.shape[0] / df_mutations.shape[0]:.2%} of all nucleotide mutations found passed with quality scores >= {quality_filter}"
+        f"{df_quality_filter.shape[0] / df_mutations.shape[0]:.2%} \
+            of all nucleotide mutations found passed with \
+            quality scores >= {quality_filter}"
     )
     df_quality_filter.to_csv(
         output_folder
@@ -309,25 +393,35 @@ def main():
     print(f"{fGetTime()} Calculating mutation counts...")
     df_counts, num_singles, num_multiples = count_mutations(df_quality_filter, gene)
     with open(
-        output_folder / "mutations/quality_filtered/multiple_mutants.tsv", "r"
+        output_folder / "mutations/quality_filtered/multiple_mutants.tsv",
+        "r",
+        encoding="utf-8",
     ) as f:
         header = "sample_name\tnum_singles\tnum_multiples\n"
         if f.readline() != header:
             with open(
-                output_folder / "mutations/quality_filtered/multiple_mutants.tsv", "a"
+                output_folder / "mutations/quality_filtered/multiple_mutants.tsv",
+                "a",
+                encoding="utf-8",
             ) as f:
                 f.write(header)
     with open(
-        output_folder / "mutations/quality_filtered/multiple_mutants.tsv", "a"
+        output_folder / "mutations/quality_filtered/multiple_mutants.tsv",
+        "a",
+        encoding="utf-8",
     ) as f:
         f.write(f"{sample_name}\t{num_singles}\t{num_multiples}\n")
     with open(
-        output_folder / "mutations/quality_filtered/multiple_mutants.tsv", "r"
+        output_folder / "mutations/quality_filtered/multiple_mutants.tsv",
+        "r",
+        encoding="utf-8",
     ) as f:
         sorted_lines = "".join(natsorted(f.readlines()[1:]))
     # ! not sure if this works, check this
     with open(
-        output_folder / "mutations/quality_filtered/multiple_mutants.tsv", "w"
+        output_folder / "mutations/quality_filtered/multiple_mutants.tsv",
+        "w",
+        encoding="utf-8",
     ) as f:
         f.write(header)
         f.write(sorted_lines)

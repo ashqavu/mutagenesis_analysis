@@ -1,6 +1,12 @@
 #!/usr/bin/env python
 """
-This script is written to parse the mutation data from the read sequences. It provides a base SequencingData object class that holds information about the dataset (e.g. sample names, reference gene) and calculates counts, frequency, enrichment, and fitness data. Two additional subclasses are provided for parsing different sequencing schemes, such as when the sublibraries are submitted as one pooled library sample as opposed to separate sublibraries for sequencing.
+This script is written to parse the mutation data from the read sequences. It
+provides a base SequencingData object class that holds information about the
+dataset (e.g. sample names, reference gene) and calculates counts, frequency,
+enrichment, and fitness data. Two additional subclasses are provided for
+parsing different sequencing schemes, such as when the sublibraries are
+submitted as one pooled library sample as opposed to separate sublibraries for
+sequencing.
 """
 import copy
 import csv
@@ -14,7 +20,6 @@ from natsort import natsorted
 from scipy.stats import norm
 
 import plasmid_map
-from visualization import heatmap_masks
 
 
 class SequencingData:
@@ -44,7 +49,7 @@ class SequencingData:
         samples_file = Path(inputfolder) / "raw_data/SampleNames.txt"
         samples = []
 
-        with open(samples_file, "r") as file:
+        with open(samples_file, "r", encoding="utf-8") as file:
             for line in file:
                 line = line.rstrip()
                 name = line.split("\t")[1]
@@ -77,14 +82,15 @@ class SequencingData:
         """
         treatments = []
         for name in samples:
-            treatment = re.sub("([^A-Za-z0-9])?\d+$", "", name)
+            treatment = re.sub(r"([^A-Za-z0-9])?\d+$", "", name)
             treatments.append(treatment)
         treatments = natsorted(list(set(treatments)))
         return treatments
 
     def _get_counts(self, sample_list: list, inputfolder: str) -> dict:
         """
-        Load all matrices from the results folder as pandas.DataFrame objects and compile a dictionary
+        Load all matrices from the results folder as pandas.DataFrame objects
+        and compile a dictionary
 
         Parameters
         ----------
@@ -122,7 +128,8 @@ class SequencingData:
 
     def _get_total_reads(self, inputfolder: str) -> dict:
         """
-        Retrieve total number of reads found for each sample after alignment (by `samtools idxstats`) and create dictionary
+        Retrieve total number of reads found for each sample after alignment
+        (by `samtools idxstats`) and create dictionary
 
         Parameters
         ----------
@@ -136,7 +143,7 @@ class SequencingData:
         """
         reads_file = Path(inputfolder) / "alignments/total_reads.tsv"
 
-        with open(reads_file, "r") as csvfile:
+        with open(reads_file, "r", encoding="utf-8") as csvfile:
             reader = csv.reader(csvfile, delimiter="\t")
             total_reads = {row[0]: int(row[1]) for row in reader}
         return total_reads
@@ -168,7 +175,8 @@ class SequencingData:
 
     def _get_enrichment(self, frequencies: dict) -> dict:
         """
-        Calculate enrichment (e) of each mutation (i) by equation log_{10}(\frac{f^i{selected}}{f^i_{unselected}})
+        Calculate enrichment (e) of each mutation (i) by equation
+        log_{10}(\frac{f^i{selected}}{f^i_{unselected}})
 
         Parameters
         ----------
@@ -183,7 +191,8 @@ class SequencingData:
         Raises
         ------
         LookupError
-            Will not be able to calculate enrichment properly if there is more than one untreated sample to compare frequencies to
+            Will not be able to calculate enrichment properly if there is more
+            than one untreated sample to compare frequencies to
         """
         samples = frequencies.keys()
         untreated = [x for x in samples if "UT" in x]
@@ -207,7 +216,9 @@ class SequencingData:
 
     def _get_fitness(self, enrichment: dict) -> dict:
         """
-        Calculate normalized fitness values (s) of each mutation (i) by subtracting the enrichment of synonymous wild-type mutations from the enrichment value of a mutation
+        Calculate normalized fitness values (s) of each mutation (i) by
+        subtracting the enrichment of synonymous wild-type mutations from the
+        enrichment value of a mutation
         s^i = e^i - < e^{WT} >
 
         Parameters
@@ -223,7 +234,9 @@ class SequencingData:
         Raises
         ------
         LookupError
-            Will not be able to calculate enrichment properly (and thus fitness) if there is more than one untreated sample to compare frequencies to
+            Will not be able to calculate enrichment properly (and thus
+            fitness) if there is more than one untreated sample to compare
+            frequencies to
         """
         samples = enrichment.keys()
         # treatments = self._get_treatments(samples)
@@ -248,6 +261,9 @@ class SequencingData:
 
     @property
     def samples(self) -> list:
+        """
+        Samples found within dataset
+        """
         return self._samples
 
     @samples.setter
@@ -255,27 +271,45 @@ class SequencingData:
         self._samples = value
 
     @property
-    def treatments(self):
+    def treatments(self) -> list:
+        """
+        Treatments found in dataset
+        """
         return self._get_treatments(self._samples)
 
     @property
-    def counts(self):
+    def counts(self) -> dict:
+        """
+        Counts DataFrames for all samples in dataset
+        """
         return self._get_counts(self.samples, self._inputfolder)
 
     @property
-    def total_reads(self):
+    def total_reads(self) -> dict:
+        """
+        Total reads for all samples in dataset
+        """
         return self._get_total_reads(self._inputfolder)
 
     @property
-    def frequencies(self):
+    def frequencies(self) -> dict:
+        """
+        Frequencies for all samples in dataset
+        """
         return self._get_frequencies(self.counts, self.total_reads)
 
     @property
-    def enrichment(self):
+    def enrichment(self) -> dict:
+        """
+        Enrichment values for all samples in dataset
+        """
         return self._get_enrichment(self.frequencies)
 
     @property
-    def fitness(self):
+    def fitness(self) -> dict:
+        """
+        Fitness values for all samples in dataset
+        """
         return self._get_fitness(self.enrichment)
 
 
@@ -283,9 +317,6 @@ class SequencingDataReplicates(SequencingData):
     """
     Class used to divide sequencing results into replicate datasets (n)
     """
-
-    def __init__(self, gene, inputfolder):
-        super().__init__(gene, inputfolder)
 
     @property
     def replicate_numbers(self) -> list:
@@ -300,7 +331,7 @@ class SequencingDataReplicates(SequencingData):
         """
         replicate_numbers = []
 
-        r = re.compile("\d+")
+        r = re.compile(r"\d+")
         for name in self.samples:
             numbers = r.findall(name)
             replicate_numbers += numbers
@@ -311,7 +342,8 @@ class SequencingDataReplicates(SequencingData):
 
     def get_replicate_data(self, n: int) -> SequencingData:
         """
-        If multiple selection experiments were submitted, match the treatment samples to the correct untreated sample.
+        If multiple selection experiments were submitted, match the treatment
+        samples to the correct untreated sample.
 
         Parameters
         ----------
@@ -348,9 +380,11 @@ class SequencingDataSublibraries:
 
     def _get_sublibrary_pools(self, sample_names: list) -> list:
         """
-        Determine which sublibraries were pooled given a set of samples named by convention <TREATMENT>56, 78, etc.
+        Determine which sublibraries were pooled given a set of samples named
+        by convention <TREATMENT>56, 78, etc.
 
-        This is specific to our TEM-1 mutagenesis library and will not be able to be generalized to other datasets
+        This is specific to our TEM-1 mutagenesis library and will not be able
+        to be generalized to other datasets
 
         Parameters
         ----------
@@ -394,7 +428,8 @@ class SequencingDataSublibraries:
         Returns
         -------
         sublibrary_residues : dict
-            Covered library positions matched to a concatenated string representation of pooled library numbers
+            Covered library positions matched to a concatenated string
+            representation of pooled library numbers
         """
         pool_residues = {}
         for pool in pools:
@@ -442,7 +477,7 @@ class SequencingDataSublibraries:
                 data = pool_dataset.counts
             for name, df in data.items():
                 if data_name == "counts":
-                    name = re.sub("([^A-Za-z0-9])?\d+$", "", name)
+                    name = re.sub(r"([^A-Za-z0-9])?\d+$", "", name)
                 sublibrary_data = df.loc[residue_list]
                 df_dict[name].append(sublibrary_data)
         # * iterate back through each treatment and merge the data
@@ -455,7 +490,8 @@ class SequencingDataSublibraries:
 
     def _combine_fitness(self, dataset: SequencingData) -> dict:
         """
-        Go through sequencing pools and appropriate calculate fitness data by restricting the positions for each set
+        Go through sequencing pools and appropriate calculate fitness data by
+        restricting the positions for each set
 
         Parameters
         ----------
@@ -489,5 +525,6 @@ class SequencingDataSublibraries:
     @property
     def enrichment(self):
         raise AttributeError(
-            "Enrichment data cannot be accurately represented in combined dataframes, see 'fullset' attribute"
+            "Enrichment data cannot be accurately represented in combined \
+            dataframes, see 'fullset' attribute"
         )

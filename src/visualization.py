@@ -1,6 +1,11 @@
 #!/usr/bin/env python
+"""
+Suite of functions written for generating figures associated with deep
+mutagenesis library selection experiments
+"""
 import re
 
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -10,15 +15,59 @@ from matplotlib.offsetbox import AnchoredText
 from matplotlib.patches import Rectangle
 from scipy.stats import norm
 
+from plasmid_map import Gene
+from sequencing_data import SequencingData
 
-def match_treated_untreated(sample):
+
+def match_treated_untreated(sample: str) -> str:
+    """
+    Takes name of treated sample (e.g. CefX3) and matches it to the
+    corresponding untreated sample name (UT3) for proper comparisons.
+
+    Parameters
+    ----------
+    sample : str
+        Name of sample
+
+    Returns
+    -------
+    untreated : str
+        Name of corresponding untreated smple
+    """
     num = re.sub(r"[A-Za-z]*", "", sample)
-    return "UT" + num
+    untreated = "UT" + num
+    return untreated
 
 
 def filter_fitness_read_noise(
-    treated, counts_dict, fitness_dict, gene, read_threshold=1
-):
+    treated: str,
+    counts_dict: dict,
+    fitness_dict: dict,
+    gene: Gene,
+    read_threshold: int = 1,
+) -> pd.DataFrame:
+    """
+    Takes DataFrames for treated sample and returns a new DataFrame with cells
+    with untreated counts under the minimum read threshold filtered out
+
+    Parameters
+    ----------
+    treated : str
+        Name of treated sample
+    counts_dict : dict
+        Dictionary containing all samples and DataFrames with mutation count values
+    fitness_dict : dict
+        Dictionary containing all samples and DataFrames with mutation fitness values
+    gene : Gene
+        Gene object for locating wild-type residues
+    read_threshold : int, optional
+        Minimum number of reads required to be included, by default 1
+
+    Returns
+    -------
+    df_treated_filtered : pd.DataFrame
+        Fitness table with insufficient counts filtered out
+    """
     untreated = match_treated_untreated(treated)
     df_counts_treated = counts_dict[treated]
     df_counts_untreated = counts_dict[untreated]
@@ -30,7 +79,21 @@ def filter_fitness_read_noise(
     return df_treated_filtered
 
 
-def heatmap_table(gene):
+def heatmap_table(gene: Gene) -> pd.DataFrame:
+    """
+    Returns DataFrame for plotting heatmaps with position indices and residue
+    columns (ACDEFGHIKLMNPQRSTVWY*∅)
+
+    Parameters
+    ----------
+    gene : Gene
+        Gene object with translated protein sequence
+
+    Returns
+    -------
+    df : pd.DataFrame
+        DataFrame of Falses
+    """
     df = pd.DataFrame(
         False,
         index=np.arange(len(gene.cds_translation)),
@@ -39,15 +102,28 @@ def heatmap_table(gene):
     return df
 
 
-# //* should do something about the numbering flexibility here
-def heatmap_masks(gene):
+def heatmap_masks(gene: Gene) -> pd.DataFrame:
+    """
+    Returns a bool DataFrame with wild-type cells marked as True for heatmap
+    plotting
+
+    Parameters
+    ----------
+    gene : Gene
+        Object providing translated protein sequence
+
+    Returns
+    -------
+    df_wt : pd.DataFrame
+        DataFrame to use for marking wild-type cells on heatmaps
+    """
     df_wt = heatmap_table(gene)
     for position, residue in enumerate(gene.cds_translation):
         df_wt.loc[position, residue] = True
     return df_wt
 
 
-def respine(ax):
+def respine(ax: matplotlib.axes) -> None:
     """
     Set the edges of the axes to be solid gray
 
@@ -66,8 +142,22 @@ def respine(ax):
         spine.set_lw(0.4)
 
 
-def histogram_mutation_counts(SequencingData):
-    counts = SequencingData.counts
+def histogram_mutation_counts(sequencing_data: SequencingData) -> matplotlib.figure:
+    """
+    Generate Figure of histograms plotting distribution of number of counts
+    found per amino acid mutation
+
+    Parameters
+    ----------
+    sequencing_data : SequencingData
+        Object providing data for number of counts found per sample
+
+    Returns
+    -------
+    fig : matplotlib.figure
+        Figure with each sample plotted on a different Subplot
+    """
+    counts = sequencing_data.counts
     num_plots = len(counts)
     height = num_plots * 1.8
 
@@ -77,8 +167,8 @@ def histogram_mutation_counts(SequencingData):
     fig.suptitle("Distribution of counts for all amino acids")
 
     for i, sample in enumerate(counts):
-        # * // these indices are specific to the mature TEM-1 protein
-        # * // would need to be changed if you used a different gene
+        # * these indices are specific to the mature TEM-1 protein
+        # * would need to be changed if you used a different gene
         counts_values = counts[sample].loc[23:285, :"Y"]
         num_missing = counts_values.lt(1).sum().sum() - counts_values.shape[0]
         with np.errstate(divide="ignore"):
@@ -86,7 +176,7 @@ def histogram_mutation_counts(SequencingData):
                 counts_values.lt(1), np.log10(counts_values)
             )
         log_values = log_values.where(log_values != 0.01, np.nan).values.flatten()
-        # * // total number of mutants specific to TEM-1 library
+        # * total number of mutants specific to TEM-1 library
         pct_missing = num_missing / 4997
         ax = axes[i]
         ax.hist(
@@ -118,8 +208,11 @@ def histogram_mutation_counts(SequencingData):
     return fig
 
 
-def heatmap_missing_mutations(df, ax=None, cbar_ax=None, orientation="vertical"):
+def heatmap_missing_mutations(
+    df: pd.DataFrame, ax=None, cbar_ax=None, orientation="vertical"
+) -> matplotlib.axes:
     """
+    # ! Unused function
     Plot a heatmap showing positions in the library where mutants are missing
 
     Parameters
@@ -164,8 +257,6 @@ def heatmap_missing_mutations(df, ax=None, cbar_ax=None, orientation="vertical")
         cbar.ax.set_yticklabels(["missing", "present"], rotation=-90, va="center")
         cbar.ax.set_aspect(12.5)
 
-    # set title
-
     return ax
 
 
@@ -173,38 +264,38 @@ def heatmap_wrapper(
     df: pd.DataFrame,
     name: str,
     dataset: str,
-    gene,
-    ax=None,
-    cbar=False,
-    cbar_ax=None,
-    vmin=-2,
-    vmax=2,
-    fitness_cmap="vlag",
-    orientation="horizontal",
-):
+    gene: Gene,
+    ax: matplotlib.axes = None,
+    cbar: bool = False,
+    cbar_ax: matplotlib.axes = None,
+    vmin: float = -2.0,
+    vmax: float = 2.0,
+    fitness_cmap: str = "vlag",
+    orientation: str = "horizontal",
+) -> matplotlib.axes:
     """
     Function wrapper for preferred heatmap aesthetic settings
 
     Parameters
     ----------
-    df : pandas.DataFrame
+    df : pd.DataFrame
         Matrix to be plotted
     name : str
         Sample name for axes labeling
     dataset : str
         Type of data ("counts" or "fitness")
-    gene : str
+    gene : Gene
         Gene object to provide residue numbering
-    ax : matplotlib.Axes, optional
+    ax : matplotlib.axes, optional
         Axes on which to draw the data, by default None
     cbar : bool, optional
         Whether to draw a colorbar or not, by default False
-    cbar_ax : matplotlib.Axes, optional
+    cbar_ax : matplotlib.axes, optional
         Axes on which to draw the colorbar, by default None
-    vmin : int, optional
-        For fitness data, vmin parameter passed to sns.heatmap, by default -2
-    vmax : int, optional
-        For fitness data, vmax parameter passed to sns.heatmap, by default 2
+    vmin : float, optional
+        For fitness data, vmin parameter passed to sns.heatmap, by default -2.0
+    vmax : float, optional
+        For fitness data, vmax parameter passed to sns.heatmap, by default 2.0
     fitness_cmap : str, optional
         Colormap to use for fitness heatmap, by default "vlag"
     orientation : str, optional
@@ -212,7 +303,7 @@ def heatmap_wrapper(
 
     Returns
     -------
-    h : matplotlib.Axes
+    h : matplotlib.axes
         Axes object with the heatmap
     """
     if dataset == "counts":
@@ -325,30 +416,34 @@ def heatmap_draw(
     counts_dict: dict,
     fitness_dict: dict,
     dataset: str,
-    gene,
-    read_threshold=1,
-    vmin=-2,
-    vmax=2,
-    fitness_cmap="vlag",
-    orientation="horizontal",
-):
+    gene: Gene,
+    read_threshold: int = 1,
+    vmin: float = -2.0,
+    vmax: float = 2.0,
+    fitness_cmap: str = "vlag",
+    orientation: str = "horizontal",
+) -> matplotlib.figure:
     """
-    Draw a heatmap of a dataset
+    Draw a heatmap figure of a dataset
     # TODO: Consider re-adding figure to make a missing chart, but perhaps not really necessary
     # TODO: Add read_threshold parameter or change fitness attribute to be filtered
 
     Parameters
     ----------
-    df_dict : dict
-        Sample names with datatables
+    counts_dict : dict
+        Dictionary providing counts tables for all samples to plot
+    fitness_dict : dict
+        Dictionary providing fitness tables for all samples to plot
     dataset : str
-        Whether to draw a heatmap for raw (log-transformed) counts or fitness data
+        Whether to draw a heatmap for raw (log-transformed) counts or fitness values
     gene : Gene
         Gene object that provides residue numbering
-    vmin : int, optional
-        For fitness data, vmin parameter passed to sns.heatmap, by default -2
-    vmax : int, optional
-        For fitness data, vmax parameter passed to sns.heatmap, by default 2
+    read_threshold : int
+        Minimum number of reads for fitness value to be considered valid, by default 1
+    vmin : float, optional
+        For fitness data, vmin parameter passed to sns.heatmap, by default -2.0
+    vmax : float, optional
+        For fitness data, vmax parameter passed to sns.heatmap, by default 2.0
     fitness_cmap : str, optional
         Colormap to use for fitness heatmap, by default "vlag"
     orientation : str, optional
@@ -356,10 +451,10 @@ def heatmap_draw(
 
     Returns
     -------
-    fig
-        matplotlib.Figure
+    fig : matplotlib.figure
     """
 
+    # * determine parameters for plotting function based on figure type
     params_counts = {
         "df_dict": counts_dict,
         "num_columns": len(counts_dict),
@@ -376,7 +471,8 @@ def heatmap_draw(
         df_dict, num_columns, num_rows, suptitle = params_counts.values()
     elif dataset == "fitness":
         df_dict, num_columns, num_rows, suptitle = params_fitness.values()
-        df_dict = fitness_dict_filter = {
+        # * will use filtered data here, but default is to not filter (i.e. read_threshold=1)
+        df_dict = {
             key: filter_fitness_read_noise(
                 key, counts_dict, fitness_dict, gene, read_threshold=read_threshold
             )
@@ -403,7 +499,7 @@ def heatmap_draw(
     # * plot each data one by one
     for i, sample in enumerate(sorted(df_dict)):
         data = df_dict[sample]
-        # * function-provided styling for heatmap
+        # * function-provided styling for heatmaps
         if dataset == "counts":
             heatmap_wrapper(
                 data,
@@ -426,6 +522,7 @@ def heatmap_draw(
                 orientation=orientation,
             )
     if orientation == "horizontal":
+        # * re-size Figure down to height of all subplots combined after plotting
         height = 0
         for ax in fig.axes:
             ax.tick_params(labelleft=True)
@@ -434,19 +531,24 @@ def heatmap_draw(
             )
         fig.axes[0].tick_params(labeltop=True)
         fig.set_figheight(height + 1)
+        # * adjust subplot spacing
         pad = fig.get_layout_engine().get()["hspace"] / 2
+
     elif orientation == "vertical":
         for ax in fig.axes:
             ax.tick_params(labelbottom=True)
         fig.axes[0].tick_params(labelleft=True)
+        # * re-size Figure down
         fig.set_figheight(fig.get_tightbbox().height)
+        # * adjust sutplob spacing
         pad = fig.get_layout_engine().get()["wspace"] / 2
+
+    # * add colorbar
     cbar = fig.colorbar(
         axs[0].collections[0],
         ax=fig.axes,
         shrink=0.2,
         fraction=0.1,
-        # pad=0.05,
         pad=pad,
         anchor="NW",
         location=cbar_location,
@@ -457,7 +559,9 @@ def heatmap_draw(
     return fig
 
 
-def relabel_axis(fig, gene, orientation="horizontal"):
+def relabel_axis(
+    fig: matplotlib.figure, gene: Gene, orientation: str = "horizontal"
+) -> None:
     """
     Here we relabel the position-axis of the heatmap figure to use the Ambler numbering system.
 
@@ -465,7 +569,7 @@ def relabel_axis(fig, gene, orientation="horizontal"):
     ----------
     fig : matplotlib.figure
         Parent figure of all the heatmap axes
-    gene : plasmid_map.Gene
+    gene : Gene
         Gene object that holds a numbering system attribute
     orientation : str, optional
         Whether the heatmaps are drawn horizontally or vertically, by default "horizontal"
@@ -474,8 +578,9 @@ def relabel_axis(fig, gene, orientation="horizontal"):
     -------
     None
     """
-
-    df_wt = heatmap_masks(gene).loc[285]
+    # * df for adjusting interactive hover annotations
+    df_wt = heatmap_masks(gene)
+    rows, cols = df_wt.shape
     if orientation == "vertical":
         fig.axes[0].set_yticklabels(
             np.take(
@@ -483,10 +588,9 @@ def relabel_axis(fig, gene, orientation="horizontal"):
             )
         )
         for ax in fig.axes[:-1]:
-            data = ax.collections[0].get_array().data.reshape(287, 22)
-
+            data = ax.collections[0].get_array().data.reshape(rows, cols)
+            # * adjust jupyter widget interactive hover values
             def format_coord(x, y):
-                df_wt = heatmap_masks(gene)
                 x = np.floor(x).astype("int")
                 y = np.floor(y).astype("int")
                 residue = df_wt.columns[x]
@@ -502,8 +606,9 @@ def relabel_axis(fig, gene, orientation="horizontal"):
             )
         )
         for ax in fig.axes[:-1]:
-            data = ax.collections[0].get_array().data.reshape(22, 287)
+            data = ax.collections[0].get_array().data.reshape(rows, cols)
 
+            # * adjust jupyter widget interactive hover values
             def format_coord(x, y):
                 x = np.floor(x).astype("int")
                 y = np.floor(y).astype("int")
@@ -515,7 +620,29 @@ def relabel_axis(fig, gene, orientation="horizontal"):
             ax.format_coord = format_coord
 
 
-def histogram_fitness_wrapper(sample, fitness_dict, bins, ax=None):
+def histogram_fitness_wrapper(
+    sample: str, fitness_dict: dict, bins: list, ax: matplotlib.axes = None
+) -> None:
+    """
+    Styler for individual histogram plotting fitness values. Gray bars show
+    missense mutation values, green bars show synonymous mutation values, red
+    bars show stop mutations values.
+
+    Parameters
+    ----------
+    sample : str
+        Sample to plot
+    fitness_dict : dict
+        Fitness DataFrames for all samples
+    bins : list
+        List of bin values
+    ax : matplotlib.axes, optional
+        AxesSubplot to plot on, by default None
+
+    Returns
+    -------
+    None
+    """
     if ax is None:
         ax = plt.gca()
     df_fitness = fitness_dict[sample]
@@ -555,8 +682,28 @@ def histogram_fitness_wrapper(sample, fitness_dict, bins, ax=None):
     ax.set_ylabel("counts", weight="bold")
 
 
-def histogram_fitness_draw(counts_dict, fitness_dict, gene, read_threshold=1):
-    samples = [key for key in sorted(fitness_dict)]
+def histogram_fitness_draw(
+    counts_dict: dict, fitness_dict: dict, gene: Gene, read_threshold: int = 1
+) -> matplotlib.figure:
+    """
+    Draw a histogram figure for fitness values of a dataset
+
+    Parameters
+    ----------
+    counts_dict : dict
+        DataFrames of count values for all samples
+    fitness_dict : dict
+        DataFrames of count values for all samples
+    gene : Gene
+        Object for locating wild-type residues
+    read_threshold : int, optional
+        Minimum number of reads for fitness value to be considered valid, by default 1
+
+    Returns
+    -------
+    fig_dfe_all : matplotlib.figure
+    """
+    samples = list(sorted(fitness_dict))
     num_subplots = len(samples)
     num_rows = num_columns = int(np.round(np.sqrt(num_subplots)))
     if num_subplots / num_rows > num_rows:

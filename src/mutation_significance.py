@@ -5,6 +5,7 @@ and visualize them in scatterplots
 """
 
 import matplotlib.pyplot as plt
+import matplotlib
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -12,11 +13,22 @@ from matplotlib.patches import Ellipse, Rectangle
 from sklearn.mixture import GaussianMixture
 
 from visualization import filter_fitness_read_noise
+from plasmid_map import Gene
 
 
-def ellipse_coordinates(covariance):
+def ellipse_coordinates(covariance: np.ndarray) -> tuple[float, float, float]:
     """
     Given a position and covariance, calculate the boundaries of the ellipse to be drawn
+
+    Parameters
+    ----------
+    covariance : np.ndarray
+        Covariance array
+
+    Returns
+    -------
+    width, height, angle : tuple[int, int, int]
+        Width, height, and angle of the ellipse
     """
     # convert covariance to principal axes
     if covariance.shape == (2, 2):
@@ -29,7 +41,39 @@ def ellipse_coordinates(covariance):
     return width, height, angle
 
 
-def ellipses_draw(center, width, height, angle, sigma_cutoff=3, ax=None, **kwargs):
+def ellipses_draw(
+    center: tuple[float, float],
+    width: float,
+    height: float,
+    angle: float,
+    sigma_cutoff: int = 3,
+    ax: matplotlib.axes = None,
+    **kwargs,
+) -> tuple[float, float, float]:
+    """
+    Draw the ellipses for each sigma cutoff and return the parameters of the
+    final ellipses
+
+    Parameters
+    ----------
+    center : tuple[float, float]
+        Coordinates of the center of the ellipse
+    width : float
+        Width of the ellipse
+    height : float
+        Height of the ellipse
+    angle : float
+        Angle of the ellipse
+    sigma_cutoff : int, optional
+        How many sigmas to draw and final sigma for determining significance, by default 3
+    ax : matplotlib.axes, optional
+        Axes to draw the ellipses on, by default None
+
+    Returns
+    -------
+    tuple[float, float, float]
+        Width, height, and angle of final ellipse
+    """
     if ax is None:
         ax = plt.gca()
     for n_sigma in range(1, sigma_cutoff + 1):
@@ -49,27 +93,60 @@ def ellipses_draw(center, width, height, angle, sigma_cutoff=3, ax=None, **kwarg
 
 
 def gaussian_significance_model(
-    x,
-    y,
-    *,
-    draw=True,
-    counts_dict,
-    fitness_dict,
-    gene,
-    ax=None,
-    read_threshold=20,
-    sigma_cutoff=3,
-    xlim=(-2.5, 2.5),
-    ylim=(-2.5, 2.5),
-):
+    x: str,
+    y: str,
+    counts_dict: dict,
+    fitness_dict: dict,
+    gene: Gene,
+    draw: bool = True,
+    ax: matplotlib.axes = None,
+    read_threshold: int = 20,
+    sigma_cutoff: int = 3,
+    xlim: tuple[float, float] = (-2.5, 2.5),
+    ylim: tuple[float, float] = (-2.5, 2.5),
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Determine significant mutations by using a Gaussian model to calculate
+    which mutations have fitness values that are significantly different from
+    synonymous mutations according to the sigma cutoff
+
+    Parameters
+    ----------
+    x : str
+        First sample to compare
+    y : str
+        Second sample to compare
+    counts_dict : dict
+         Dictionary containing all samples and DataFrames with mutation count values
+    fitness_dict : dict
+         Dictionary containing all samples and DataFrames with mutation fitness values
+    gene : Gene
+        Gene object for locating wild-type residues
+    draw : bool, optional
+        Whether to draw the ellipses or just return boundaries, by default True
+    ax : matplotlib.axes, optional
+        Axes to draw the ellipses on, by default None
+    read_threshold : int, optional
+        Minimum number of reads required to be included, by default 20
+    sigma_cutoff : int, optional
+        How many sigmas away from the synonymous mutation values to use as the
+        cutoff for significance, by default 3
+    xlim : tuple[float, float], optional
+        X-axis limits of figure, by default (-2.5, 2.5)
+    ylim : tuple[float, float], optional
+        Y-axis limits of figure, by default (-2.5, 2.5)
+
+    Returns
+    -------
+    sign_resistant, sign_sensitive : tuple[pd.DataFrame, pd.DataFrame]
+        DataFrame of bool values indicating whether the significance of the
+        mutation is True or False for resistance or sensitivity
+    """
+
     if ax is None and draw:
         ax = plt.gca()
-    df_x = filter_fitness_read_noise(
-        x, counts_dict, fitness_dict, gene, read_threshold
-    )
-    df_y = filter_fitness_read_noise(
-        y, counts_dict, fitness_dict, gene, read_threshold
-    )
+    df_x = filter_fitness_read_noise(x, counts_dict, fitness_dict, gene, read_threshold)
+    df_y = filter_fitness_read_noise(y, counts_dict, fitness_dict, gene, read_threshold)
 
     # * merge two dataframes element-wise for significance test
     df_xy = pd.concat([df_x, df_y]).groupby(level=0, axis=0).agg(list)
@@ -100,9 +177,19 @@ def gaussian_significance_model(
         if draw:
             # draw ellipses
             ellipses_draw(
-                center, width, height, angle, sigma_cutoff=sigma_cutoff, ax=ax, zorder=10
+                center,
+                width,
+                height,
+                angle,
+                sigma_cutoff=sigma_cutoff,
+                ax=ax,
+                zorder=10,
             )
-        width_f, height_f, angle_f = (sigma_cutoff * width) / 2, (sigma_cutoff * height) / 2, np.radians(angle)
+        width_f, height_f, angle_f = (
+            (sigma_cutoff * width) / 2,
+            (sigma_cutoff * height) / 2,
+            np.radians(angle),
+        )
     # * determine significance
     def is_outside_ellipse(point):
         # if either fitness value is NaN, discard point
@@ -194,20 +281,63 @@ def gaussian_significance_model(
 
 
 def shish_kabob_plot(
-    drug,
-    *,
-    counts_dict,
-    fitness_dict,
-    sign_resistant_df_dict,
-    sign_sensitive_df_dict,
-    gene,
-    ax,
-    read_threshold=20,
-    orientation="horizontal",
-    vmin=-1.5,
-    vmax=1.5,
+    drug: str,
+    counts_dict: dict,
+    fitness_dict: dict,
+    gene: Gene,
+    sign_resistant_df_dict: dict,
+    sign_sensitive_df_dict: dict,
+    ax: matplotlib.axes,
+    read_threshold: int = 20,
+    orientation: str = "horizontal",
+    vmin: float = -1.5,
+    vmax: float = 1.5,
     cbar=False,
-):
+) -> matplotlib.axes:
+    """
+    Shish kabob plot showing only positions with significant mutations plotted
+
+    Parameters
+    ----------
+    drug : str
+        Name of drug to plot
+    counts_dict : dict
+        Reference with counts DataFrames for all samples
+    fitness_dict : dict
+        Reference with fitness DataFrames for all samples
+    gene : Gene
+        Gene object for locating wild-type residues
+    sign_resistant_df_dict : dict
+        DataFrame of bool values indicating whether the significance of the
+        mutation is True or False for resistance
+    sign_sensitive_df_dict : dict
+        DataFrame of bool values indicating whether the significance of the
+        mutation is True or False for sensitivity
+    ax : matplotlib.axes
+        Axes to draw the plot on
+    read_threshold : int, optional
+        Minimum number of reads required to be included, by default 20
+    orientation : str, optional
+        Whether to draw plot vertically or horizontally, by default "horizontal"
+    vmin : float, optional
+        For fitness data, vmin parameter passed to sns.heatmap, by default -1.5
+    vmax : float, optional
+        For fitness data, vmax parameter passed to sns.heatmap, by default 1.5
+    cbar : bool, optional
+        Whether to draw colorbar or not, by default False
+
+    Returns
+    -------
+    ax : matplotlib.axes
+
+    Raises
+    ------
+    KeyError
+        No fitness data found for the specified drug
+    IndexError
+        Will run into problems with graphing if there are more than two
+        replicates in the group
+    """
     if ax is None:
         ax = plt.gca()
     # * pick pairs for each drug
@@ -271,7 +401,12 @@ def shish_kabob_plot(
                     Rectangle((x, y), 1, 1, ec="black", fc="white", fill=True, lw=0.2)
                 )
                 ax.text(
-                    x + 0.5, y + 0.5, residue, fontsize="x-small", ha="center", va="center"
+                    x + 0.5,
+                    y + 0.5,
+                    residue,
+                    fontsize="x-small",
+                    ha="center",
+                    va="center",
                 )
             # * annotate fitness boxes
             # iterate over the x-axis (positions)
@@ -334,7 +469,12 @@ def shish_kabob_plot(
                     )
                 )
                 ax.text(
-                    x + 0.5, y + 0.5, residue, fontsize="x-small", ha="center", va="center"
+                    x + 0.5,
+                    y + 0.5,
+                    residue,
+                    fontsize="x-small",
+                    ha="center",
+                    va="center",
                 )
             for x, pos in enumerate(sign_positions):
                 aa_indices = np.argwhere(df_masked_plot[pos].notnull().values)
@@ -353,7 +493,50 @@ def shish_kabob_plot(
             ax.set_anchor("W")
     return ax
 
-def drug_pair(drug1, drug2, sign_resistant_df_dict, sign_sensitive_df_dict, *, counts_dict, fitness_dict, gene, ax=None, read_threshold=20, xlim=(-2.5, 2.5), ylim=(-2.5, 2.5)):
+
+def drug_pair(
+    drug1: str,
+    drug2: str,
+    sign_resistant_df_dict: dict,
+    sign_sensitive_df_dict: dict,
+    counts_dict: dict,
+    fitness_dict: dict,
+    gene: Gene,
+    ax: matplotlib.axes = None,
+    read_threshold: int = 20,
+    xlim: tuple[float, float] = (-2.5, 2.5),
+    ylim: tuple[float, float] = (-2.5, 2.5),
+) -> None:
+    """
+    Find common significant resistance/sensitivity mutations between two different drugs
+
+    Parameters
+    ----------
+    drug1 : str
+        First drug
+    drug2 : str
+        Second drug
+    sign_resistant_df_dict : dict
+        DataFrame of bool values indicating whether the significance of the
+        mutation is True or False for resistance
+    sign_sensitive_df_dict : dict
+        DataFrame of bool values indicating whether the significance of the
+        mutation is True or False for sensitivity
+    counts_dict : dict
+        Reference with counts DataFrames for all samples
+    fitness_dict : dict
+        Reference with fitness DataFrames for all samples
+    gene : Gene
+        Gene object for locating wild-type residues
+    ax : matplotlib.axes, optional
+        Axes to draw the plot on, by default None
+    read_threshold : int, optional
+        Minimum number of reads required to be included, by default 20
+    xlim : tuple[float, float], optional
+        X-axis limits of figure, by default (-2.5, 2.5)
+    ylim : tuple[float, float], optional
+        y-axis limits of figure, by default (-2.5, 2.5)
+    """
     if ax is None:
         ax = plt.gca()
     # * get replicate pairs for each drug
@@ -381,7 +564,7 @@ def drug_pair(drug1, drug2, sign_resistant_df_dict, sign_sensitive_df_dict, *, c
     # * build numpy matrix of all points for plotting
     X = np.column_stack((df1_xy.values.flatten(), df2_xy.values.flatten()))
     X = X[np.isfinite(X).all(axis=1)]
-    
+
     # * scatterplots
     # all mutations
     sns.scatterplot(
@@ -416,8 +599,12 @@ def drug_pair(drug1, drug2, sign_resistant_df_dict, sign_sensitive_df_dict, *, c
         s=10,
     )
     # drug1-drug2 shared mutations
-    shared_resistant_1 = df1_xy.where(sign_resistant_df_dict[drug1] & sign_resistant_df_dict[drug2])
-    shared_resistant_2 = df2_xy.where(sign_resistant_df_dict[drug1] & sign_resistant_df_dict[drug2])
+    shared_resistant_1 = df1_xy.where(
+        sign_resistant_df_dict[drug1] & sign_resistant_df_dict[drug2]
+    )
+    shared_resistant_2 = df2_xy.where(
+        sign_resistant_df_dict[drug1] & sign_resistant_df_dict[drug2]
+    )
     sns.scatterplot(
         x=shared_resistant_1.values.flatten(),
         y=shared_resistant_2.values.flatten(),
@@ -426,7 +613,7 @@ def drug_pair(drug1, drug2, sign_resistant_df_dict, sign_sensitive_df_dict, *, c
         color="firebrick",
         lw=2,
         s=10,
-        marker="D"
+        marker="D",
     )
     # * sensitive mutations
     # drug 1 mutations
@@ -450,8 +637,12 @@ def drug_pair(drug1, drug2, sign_resistant_df_dict, sign_sensitive_df_dict, *, c
         s=10,
     )
     # drug1-drug2 shared mutations
-    shared_sensitive_1 = df1_xy.where(sign_sensitive_df_dict[drug1] & sign_sensitive_df_dict[drug2])
-    shared_sensitive_2 = df2_xy.where(sign_sensitive_df_dict[drug1] & sign_sensitive_df_dict[drug2])
+    shared_sensitive_1 = df1_xy.where(
+        sign_sensitive_df_dict[drug1] & sign_sensitive_df_dict[drug2]
+    )
+    shared_sensitive_2 = df2_xy.where(
+        sign_sensitive_df_dict[drug1] & sign_sensitive_df_dict[drug2]
+    )
     sns.scatterplot(
         x=shared_sensitive_1.values.flatten(),
         y=shared_sensitive_2.values.flatten(),
@@ -460,14 +651,13 @@ def drug_pair(drug1, drug2, sign_resistant_df_dict, sign_sensitive_df_dict, *, c
         color="mediumblue",
         lw=2,
         s=10,
-        marker="D"
+        marker="D",
     )
-    
-    ax.plot([-4,4],[-4,4],":", color="gray", alpha=0.5, zorder=0)
-    ax.plot([0,0],[-4,4],"-", color="gray", alpha=0.5, lw=1,zorder=0)
-    ax.plot([-4,4],[0,0],"-", color="gray", alpha=0.5, lw=1,zorder=0)
+
+    ax.plot([-4, 4], [-4, 4], ":", color="gray", alpha=0.5, zorder=0)
+    ax.plot([0, 0], [-4, 4], "-", color="gray", alpha=0.5, lw=1, zorder=0)
+    ax.plot([-4, 4], [0, 0], "-", color="gray", alpha=0.5, lw=1, zorder=0)
     ax.set(xlim=xlim, ylim=ylim)
     ax.tick_params(left=False, bottom=False, labelsize="xx-small")
     ax.set_anchor("NW")
     ax.set_aspect("equal")
-    

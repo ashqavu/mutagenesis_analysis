@@ -30,6 +30,7 @@ def ellipse_coordinates(covariance: np.ndarray) -> tuple[float, float, float]:
     width, height, angle : tuple[int, int, int]
         Width, height, and angle of the ellipse
     """
+    
     # convert covariance to principal axes
     if covariance.shape == (2, 2):
         U, s, _ = np.linalg.svd(covariance)

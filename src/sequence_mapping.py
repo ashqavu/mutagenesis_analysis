@@ -74,7 +74,7 @@ stop_codons = CodonTable.standard_dna_table.stop_codons
 translation_table.update({stop_codon: "*" for stop_codon in stop_codons})
 
 
-def fGetTime() -> str:
+def get_time() -> str:
     """
     Returns
     -------
@@ -321,7 +321,7 @@ def main() -> None:
 
     start_time = time.time()
 
-    print(f"{fGetTime()} Finding mutations for {sample_name}...")
+    print(f"{get_time()} Finding mutations for {sample_name}...")
     with pysam.AlignmentFile(input_file, "rb", threads=os.cpu_count()) as bam:
         if args.contig:
             contig = args.contig
@@ -338,9 +338,9 @@ def main() -> None:
             file=sys.stdout,
         )
         mutations = mutation_finder(alns, gene)
-    print(f"{fGetTime()} Done")
+    print(f"{get_time()} Done")
 
-    print(f"{fGetTime()} Generating mutations table...")
+    print(f"{get_time()} Generating mutations table...")
     df_mutations = read_mutations(mutations, gene)
     df_mutations.name = sample_name
     df_mutations.to_csv(
@@ -367,10 +367,10 @@ def main() -> None:
         output_folder
         / f"mutations/quality_filtered/{sample_name}_filtered_mutations.pkl"
     )
-    print(f"{fGetTime()} Done")
+    print(f"{get_time()} Done")
 
     # ! analysis performed on prefiltered data
-    print(f"{fGetTime()} Calculating lengths of mapped query sequences...")
+    print(f"{get_time()} Calculating lengths of mapped query sequences...")
     df_read_lengths = (
         df_quality_filter[["read_id", "query_seq"]]
         .drop_duplicates("read_id")
@@ -388,9 +388,9 @@ def main() -> None:
         output_folder
         / f"mutations/quality_filtered/seq_lengths/{sample_name}_filtered_seq_lengths.pkl"
     )
-    print(f"{fGetTime()} Done")
+    print(f"{get_time()} Done")
 
-    print(f"{fGetTime()} Calculating mutation counts...")
+    print(f"{get_time()} Calculating mutation counts...")
     df_counts, num_singles, num_multiples = count_mutations(df_quality_filter, gene)
     with open(
         output_folder / "mutations/quality_filtered/multiple_mutants.tsv",
@@ -427,7 +427,7 @@ def main() -> None:
         f.write(sorted_lines)
     df_counts.to_csv(output_folder / f"counts/{sample_name}_counts.tsv", sep="\t")
     df_counts.to_pickle(output_folder / f"counts/{sample_name}_counts.pkl")
-    print(f"{fGetTime()} Done")
+    print(f"{get_time()} Done")
 
     total_runtime = round(time.time() - start_time, 3)
     print(f"Time: {total_runtime} seconds")

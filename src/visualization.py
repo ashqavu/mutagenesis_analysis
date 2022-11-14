@@ -19,6 +19,31 @@ from plasmid_map import Gene
 from sequencing_data import SequencingData
 
 
+def get_pairs(treatment: str, fitness_dict: dict) -> tuple[str, str]:
+    """
+    Given a drug, extract the replicas from the fitness dict
+
+    Parameters
+    ----------
+    treatment : str
+        Drug to find replicates of
+    fitness_dict : dict
+        Reference for fitness values of all samples
+
+    Returns
+    -------
+    replica_one, replica_two : tuple[str, str]
+        Strings of replica sample names
+    """
+    treatment_pair = [drug for drug in fitness_dict if treatment in drug]
+    if not treatment_pair:
+        raise KeyError(f"No fitness data: {treatment}")
+    if len(treatment_pair) > 2:
+        raise IndexError("Treatment has more than 2 replicates to compare")
+    replica_one, replica_two = treatment_pair[0], treatment_pair[1]
+    return replica_one, replica_two
+
+
 def match_treated_untreated(sample: str) -> str:
     """
     Takes name of treated sample (e.g. CefX3) and matches it to the
@@ -426,14 +451,13 @@ def heatmap_draw(
     """
     Draw a heatmap figure of a dataset
     # TODO: Consider re-adding figure to make a missing chart, but perhaps not really necessary
-    # TODO: Add read_threshold parameter or change fitness attribute to be filtered
 
     Parameters
     ----------
     counts_dict : dict
-        Dictionary providing counts tables for all samples to plot
+        Reference with counts dataframes for all samples
     fitness_dict : dict
-        Dictionary providing fitness tables for all samples to plot
+        Reference with fitness dataframes for all samples
     dataset : str
         Whether to draw a heatmap for raw (log-transformed) counts or fitness values
     gene : Gene

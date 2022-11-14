@@ -21,7 +21,6 @@ from natsort import natsorted
 from scipy.stats import norm
 
 from plasmid_map import Gene
-from visualization import heatmap_masks
 
 
 class SequencingData:
@@ -54,7 +53,7 @@ class SequencingData:
         samples : list
             Names of samples submitted for sequencing
         """
-        
+
         samples_file = Path(inputfolder) / "raw_data/SampleNames.txt"
         samples = []
 
@@ -73,7 +72,7 @@ class SequencingData:
         -------
         self : SequencingData
         """
-        
+
         return copy.deepcopy(self)
 
     def _get_treatments(self, samples: list) -> list:
@@ -90,7 +89,7 @@ class SequencingData:
         treatments : list
             List of treatments used in experiment
         """
-        
+
         treatments = []
         for name in samples:
             treatment = re.sub(r"([^A-Za-z0-9])?\d+$", "", name)
@@ -115,7 +114,7 @@ class SequencingData:
         counts_dict : dict
             Dictionary with sample names and dataframes
         """
-        
+
         counts_dict = {}
         datafolder = Path(inputfolder) / "results/counts"
 
@@ -153,7 +152,7 @@ class SequencingData:
         counts_dict : dict
             Dictionary with sample names to total number of reads
         """
-        
+
         reads_file = Path(inputfolder) / "alignments/total_reads.tsv"
 
         with open(reads_file, "r", encoding="utf-8") as csvfile:
@@ -274,7 +273,7 @@ class SequencingData:
     @property
     def samples(self) -> list:
         """Samples used in experiment"""
-        
+
         return self._samples
 
     @samples.setter
@@ -284,19 +283,19 @@ class SequencingData:
     @property
     def treatments(self):
         """Treatments used in experiment"""
-        
+
         return self._get_treatments(self._samples)
 
     @property
     def counts(self):
         """Counts DataFrame for each sample"""
-        
+
         return self._get_counts(self.samples, self._inputfolder)
 
     @property
     def total_reads(self):
         """Total number of reads found in each sample"""
-        
+
         return self._get_total_reads(self._inputfolder)
 
     @property
@@ -304,7 +303,7 @@ class SequencingData:
         r"""Frequencies  DataFrame for each sample calculated for mutation (i) by
         :math:`\frac{N^i}{N^{total reads}}`
         """
-        
+
         return self._get_frequencies(self.counts, self.total_reads)
 
     @property
@@ -312,7 +311,7 @@ class SequencingData:
         r"""Enrichment DataFrame for each sample calculated for mutation (i) by
         :math:`log_{10}(\frac{f^i{selected}}{f^i_{unselected}})`
         """
-        
+
         return self._get_enrichment(self.frequencies)
 
     @property
@@ -339,7 +338,7 @@ class SequencingDataReplicates(SequencingData):
         group_numbers : list
             Numbers of the groups from the sequencing set as string-type values
         """
-        
+
         replicate_numbers = []
 
         r = re.compile(r"\d+")
@@ -407,7 +406,7 @@ class SequencingDataSublibraries:
         list
             List of pooled groups with numbers as string-ypes
         """
-        
+
         # * need to strip library numbers in descending order to account for double digit numbers
         sublibrary_numbers = [
             n.removeprefix("MAS") for n in self.fullset.gene.sublibrary_positions.keys()
@@ -443,7 +442,7 @@ class SequencingDataSublibraries:
             Covered library positions matched to a concatenated string
             representation of pooled library numbers
         """
-        
+
         pool_residues = {}
         for pool in pools:
             sublibrary_names = ["MAS" + s for s in pool]
@@ -472,7 +471,7 @@ class SequencingDataSublibraries:
         combined_dict : dict
             Single combined data
         """
-        
+
         if data_name == "fitness":
             treated = [x for x in self.treatments if "UT" not in x]
             df_dict = {key: [] for key in treated}
@@ -517,7 +516,7 @@ class SequencingDataSublibraries:
         combined_fitness : dict
             Combined fitness data for each treatment (minus signal peptide)
         """
-        
+
         treated = [x for x in self.fullset.treatments if "UT" not in x]
         fitness_dict = {treatment: [] for treatment in treated}
         # * go through each pool and restrict the dataset to propertly calculate enrichment/fitness

@@ -38,7 +38,6 @@ class Gene:
         Returns
         -------
         Bio.SeqFeature
-            _description_
         """
         for f in SeqRecord.features:
             if f.type == feature_type:

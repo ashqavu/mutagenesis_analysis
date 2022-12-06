@@ -259,7 +259,7 @@ def count_mutations(df: pd.DataFrame, gene: Gene) -> tuple[pd.DataFrame, int, in
         mutants and the number of multiple mutants
     """
     # * filter redundant mutations (when all mutated bases are in same codon)
-    # TODO: change to group the multiple mutations into one record instead of straight dropping
+    # TODO: change to group the multiple mutations into one rdecord instead of straight dropping
     df = df.drop_duplicates(["read_id", "aa_pos"])
 
     df_multiples, df_singles = find_multiple_mutants(df)
@@ -322,13 +322,13 @@ def main() -> None:
     start_time = time.time()
 
     print(f"{get_time()} Finding mutations for {sample_name}...")
-    with pysam.AlignmentFile(input_file, "rb", threads=os.cpu_count()) as bam:
+    with pysam.AlignmentFile(input_file, "rb", threads=os.cpu_count()) as bam: # pylint: disable=no-member
         if args.contig:
             contig = args.contig
         else:
             contig = bam.header.references[0]
         num_alignments = int(
-            pysam.view(
+            pysam.view( # pylint: disable=no-member
                 "-c", input_file.as_posix(), f"{contig}:{cds_start+1}-{cds_end}"
             ).strip()
         )

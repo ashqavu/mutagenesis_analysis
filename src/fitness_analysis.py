@@ -8,8 +8,7 @@ import numpy as np
 import pandas as pd
 from sklearn.mixture import GaussianMixture
 
-from plasmid_map import Gene
-from sequencing_data import get_pairs, filter_fitness_read_noise, SequencingData
+from sequencing_data import get_pairs, filter_fitness_read_noise, SequencingData, heatmap_masks
 
 
 def get_gaussian_model(df_x: pd.DataFrame, df_y: pd.DataFrame) -> GaussianMixture:
@@ -139,9 +138,7 @@ def gaussian_significance(
 
 
 def significant_sigma_dfs(
-    counts_dict: dict,
-    fitness_dict: dict,
-    gene: Gene,
+    data: SequencingData,
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -150,12 +147,8 @@ def significant_sigma_dfs(
 
     Parameters
     ----------
-    counts_dict : dict
-        Reference for counts values of all samples
-    fitness_dict : dict
-        Reference for fitness values of all samples
-    gene : Gene
-        Gene object for locating wild-type residues
+    data : SequencingData
+        Data from experiment sequencing with count-, enrichment-, and fitness-values
     read_threshold : int, optional
         Minimum number of reads required to be included, by default 20
     sigma_cutoff : int, optional
@@ -168,14 +161,18 @@ def significant_sigma_dfs(
         Dataframes of boolean values indicating which cells of the table are
         relevant mutations for the drug
     """
+    gene = data.gene
+    counts_dict = data.counts
+    fitness_dict = data.fitness
+    wt_mask = heatmap_masks(gene)
     sign_sensitive_dfs = {}
     sign_resistant_dfs = {}
-    dfs_filtered = filter_fitness_read_noise(counts_dict, fitness_dict, gene, read_threshold=read_threshold)
+    dfs_filtered = filter_fitness_read_noise(counts_dict, fitness_dict, read_threshold=read_threshold)
     drugs = set([x.rstrip("1234567890") for x in fitness_dict])
     for drug in drugs:
-        x, y = get_pairs(drug, fitness_dict)
-        df_x = dfs_filtered[x]
-        df_y = dfs_filtered[y]
+        x, y = get_pairs(drug, data.samples)
+        df_x = dfs_filtered[x].mask(wt_mask)
+        df_y = dfs_filtered[y].mask(wt_mask)
 
         sign_sensitive, sign_resistant, _ = gaussian_significance(
             df_x,
@@ -188,18 +185,16 @@ def significant_sigma_dfs(
 
 def significant_sigma_mutations(
     data: SequencingData,
-    gene,
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
 ) -> pd.DataFrame:
+    gene = data.gene
     counts_dict = data.counts
     fitness_dict = data.fitness
     cds_translation = gene.cds_translation
-    drugs = sorted(set([x.rstrip("1234567890") for x in fitness_dict]))
+    drugs_all = sorted([drug for drug in data.treatments if "UT" not in drug])
     sign_sensitive_dfs, sign_resistant_dfs = significant_sigma_dfs(
-        counts_dict,
-        fitness_dict,
-        gene,
+        data,
         read_threshold=read_threshold,
         sigma_cutoff=sigma_cutoff,
     )
@@ -209,7 +204,7 @@ def significant_sigma_mutations(
         [fitness_dict[sample_name].index, fitness_dict[sample_name].columns]
     ).values
     list_all_fitness = []
-    for drug in drugs:
+    for drug in drugs_all:
         replica_one, replica_two = get_pairs(drug, fitness_dict)
         df1 = fitness_dict[replica_one]
         df2 = fitness_dict[replica_two]

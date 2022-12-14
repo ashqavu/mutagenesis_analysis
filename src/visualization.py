@@ -683,7 +683,7 @@ def gaussian_drug(
     gene = data.gene
     wt_mask = heatmap_masks(gene)
 
-    x, y = get_pairs(drug, fitness_dict)
+    x, y = get_pairs(drug, data.samples)
     dfs_filtered = filter_fitness_read_noise(
         counts_dict, fitness_dict, read_threshold=read_threshold
     )
@@ -811,9 +811,7 @@ def gaussian_replica_pair_draw(
     matplotlib.figure
     """
     # * determine shape of subplots
-    drugs_all = sorted(
-        set(x.rstrip("1234567890") for x in data.samples if "UT" not in x)
-    )
+    drugs_all = sorted([drug for drug in data.treatments if "UT" not in drug])
     num_plots = len(drugs_all)
     rows = cols = np.sqrt(num_plots)
     if not rows.is_integer():
@@ -886,7 +884,7 @@ def shish_kabob_drug(
     gene = data.gene
     wt_mask = heatmap_masks(gene)
 
-    replica_one, replica_two = get_pairs(drug, fitness_dict)
+    replica_one, replica_two = get_pairs(drug, data.samples)
     dfs_filtered = filter_fitness_read_noise(
         counts_dict, fitness_dict, read_threshold=read_threshold
     )
@@ -1076,9 +1074,7 @@ def shish_kabob_draw(
     """
 
     # * determine shape of subplots
-    drugs_all = sorted(
-        set(x.rstrip("1234567890") for x in data.samples if "UT" not in x)
-    )
+    drugs_all = sorted([drug for drug in data.treatments if "UT" not in drug])
     gridspec_dict = {"wspace": 0, "hspace": 0}
     if orientation == "horizontal":
         num_rows, num_cols = len(drugs_all), 2
@@ -1198,14 +1194,14 @@ def drug_pair(
         counts_dict, fitness_dict, read_threshold=read_threshold
     )
     # drug 1
-    drug1_x, drug1_y = get_pairs(drug1, fitness_dict)
+    drug1_x, drug1_y = get_pairs(drug1, data.samples)
     df1_x = dfs_filtered[drug1_x].mask(wt_mask)
     df1_y = dfs_filtered[drug1_y].mask(wt_mask)
     df_sign_sensitive1, df_sign_resistant1, _ = gaussian_significance(
         df1_x, df1_y, sigma_cutoff=sigma_cutoff
     )
     # drug 2
-    drug2_x, drug2_y = get_pairs(drug2, fitness_dict)
+    drug2_x, drug2_y = get_pairs(drug2, data.samples)
     df2_x = dfs_filtered[drug2_x].mask(wt_mask)
     df2_y = dfs_filtered[drug2_y].mask(wt_mask)
     df_sign_sensitive2, df_sign_resistant2, _ = gaussian_significance(

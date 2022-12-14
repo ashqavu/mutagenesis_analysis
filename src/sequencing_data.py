@@ -24,6 +24,7 @@ from scipy.stats import norm
 from plasmid_map import Gene
 
 # TODO: get_pairs, match_treated_untreated, filter_fitness_read_noise can probably go in a separate tools .py # pylint: disable=fixme,line-too-long
+# TODO: fix @fitness to not be a property i guess
 
 
 def get_pairs(treatment: str, samples: list) -> tuple[str, str]:
@@ -118,13 +119,11 @@ def heatmap_masks(gene: Gene) -> pd.DataFrame:
 def filter_fitness_read_noise(
     counts_dict: dict,
     fitness_dict: dict,
-    gene: Gene,
     read_threshold: int = 20,
 ) -> dict:
     """
     Takes DataFrames for treated sample and returns a new DataFrame with cells
-    with untreated counts under the minimum read threshold and wild-type positions
-    filtered out
+    with untreated counts under the minimum read threshold filtered out
 
     Parameters
     ----------
@@ -151,7 +150,6 @@ def filter_fitness_read_noise(
         dfs_filtered[sample] = df_fitness_sample.where(
             df_counts_sample.ge(read_threshold) &
             df_counts_untreated.ge(read_threshold)
-            & ~heatmap_masks(gene)
         )
     return dfs_filtered
 
@@ -312,7 +310,7 @@ class SequencingData:
     def _get_frequencies(self, counts: dict, total_reads: dict, extinct_add: int = 0.001) -> dict:
         """
         Calculate frequecy (f) for mutation (i) by :math:`\frac{N^i}{N^{total reads}}`.
-        
+
         When calculating frequencies, counts will have an addition of `extinct_add` to
         separate out mutations with untreated counts that go to below-threshold counts
         (i.e. extinct) in the untreated sample.
@@ -418,9 +416,7 @@ class SequencingData:
         return fitness_masked
 
 
-    def _get_fitness(
-        self, enrichment: dict, counts: dict, read_threshold: int = 20
-    ) -> dict:
+    def _get_fitness(self, enrichment: dict) -> dict:
         """
         Calculate normalized fitness values (s) of each mutation (i) by subtracting the
         enrichment of synonymous wild-type mutations from the enrichment value of a
@@ -430,10 +426,6 @@ class SequencingData:
         ----------
         enrichment : dict
             Reference with enrichment dataframes for all samples
-        counts : dict
-            Reference with counts dataframes for all samples
-        read_threshold : int, optional
-            Minimum of reads to be included, by default 20
 
         Returns
         -------
@@ -461,17 +453,19 @@ class SequencingData:
             SynWT_enrichment = df_enriched["∅"]
             SynWT_mean, _ = norm.fit(SynWT_enrichment.dropna())
             normalized = df_enriched - SynWT_mean
+            normalized.name = sample
+            fitness[sample] = normalized
 
-            # * mask out wild-type positions
-            fitness_masked = normalized.mask(heatmap_masks(self.gene))
-            fitness_masked.name = sample
+            # ! mask out wild-type positions
+            # fitness_masked = normalized.mask(heatmap_masks(self.gene))
+            # fitness_masked.name = sample
             # * here mask where untreated counts are insufficient but treated counts
             # * are large (i.e. highly beneficial mutations)
             # fitness_masked = self._mask_untreated_zero(
             #     counts, fitness_masked, read_threshold=read_threshold
             # )
-            fitness_masked.name = sample
-            fitness[sample] = fitness_masked
+            # fitness_masked.name = sample
+            # fitness[sample] = fitness_masked
         return fitness
 
     @property
@@ -523,9 +517,7 @@ class SequencingData:
         r"""Fitness DataFrame for each sample calculated for mutation (i) by
         :math:`e^i - < e^{WT} >`
         """
-        return self._get_fitness(
-            self.enrichment, self.counts, read_threshold=self.read_threshold
-        )
+        return self._get_fitness(self.enrichment)
 
 
 class SequencingDataReplicates(SequencingData):
@@ -619,9 +611,7 @@ class SequencingDataReplicates(SequencingData):
                     enrichment_all[sample] = df_enriched
         return enrichment_all
 
-    def _get_fitness(
-        self, enrichment: dict, counts: dict, read_threshold: int = 20
-    ) -> dict:
+    def _get_fitness(self, enrichment: dict) -> dict:
         """
         Calculate normalized fitness values (s) of each mutation (i) by subtracting the
         enrichment of synonymous wild-type mutations from the enrichment value of a
@@ -631,10 +621,6 @@ class SequencingDataReplicates(SequencingData):
         ----------
         enrichment : dict
             Reference with enrichment dataframes for all samples
-        counts : dict
-            Reference with counts dataframes for all samples
-        read_threshold : int, optional
-            Minimum of reads to be included, by default 20
 
         Returns
         -------
@@ -658,16 +644,18 @@ class SequencingDataReplicates(SequencingData):
             SynWT_enrichment = df_treated["∅"]
             SynWT_mean, _ = norm.fit(SynWT_enrichment.dropna())
             normalized = df_treated - SynWT_mean
+            normalized.name = sample
+            fitness_all[sample] = normalized
 
-            # * mask out wild-type positions
-            fitness_masked = normalized.mask(heatmap_masks(self.gene))
-            fitness_masked.name = sample
+            # ! mask out wild-type positions
+            # fitness_masked = normalized.mask(heatmap_masks(self.gene))
+            # fitness_masked.name = sample
             # * here mask where untreated counts are insufficient but treated counts
             # * are large
             # fitness_masked = self._mask_untreated_zero(
             #     counts, fitness_masked, read_threshold=read_threshold
             # )
-            fitness_all[sample] = fitness_masked
+            # fitness_all[sample] = fitness_masked
         return fitness_all
 
 

@@ -131,8 +131,6 @@ def filter_fitness_read_noise(
         Reference with counts dataframes for all samples
     fitness_dict : dict
         Reference with fitness dataframes for all samples
-    gene : Gene
-        Gene object for locating wild-type residues
     read_threshold : int, optional
         Minimum number of reads required to be included, by default 20
 
@@ -148,8 +146,7 @@ def filter_fitness_read_noise(
         df_counts_sample = counts_dict[sample]
         df_fitness_sample = fitness_dict[sample]
         dfs_filtered[sample] = df_fitness_sample.where(
-            df_counts_sample.ge(read_threshold) &
-            df_counts_untreated.ge(read_threshold)
+            df_counts_sample.ge(read_threshold) & df_counts_untreated.ge(read_threshold)
         )
     return dfs_filtered
 
@@ -182,7 +179,19 @@ class SequencingData:
         self._inputfolder = inputfolder
         self.read_threshold = read_threshold
         self.extinct_add = extinct_add
-        self.samples = self._get_sample_names(self._inputfolder)
+        self._samples = self._get_sample_names(self._inputfolder)
+        self._treatments = self._get_treatments(self._samples)
+        self._counts = self._get_counts(self._samples, self._inputfolder)
+        self._total_reads = self._get_total_reads(self._inputfolder)
+        self._frequencies = self._get_frequencies(
+            self._counts, self._total_reads, self.extinct_add
+        )
+        if len([sample for sample in self.samples if "UT" in sample]) == 1:
+            self._enrichment = self._get_enrichment(self._frequencies)
+            self._fitness = self._get_fitness(self._enrichment)
+        else:
+            self._enrichment = None
+            self._fitness = None
 
     def copy(self):
         """
@@ -307,7 +316,9 @@ class SequencingData:
         return total_reads
 
     # adds 0.001 / extinct_add, has signal peptide
-    def _get_frequencies(self, counts: dict, total_reads: dict, extinct_add: int = 0.001) -> dict:
+    def _get_frequencies(
+        self, counts: dict, total_reads: dict, extinct_add: int = 0.001
+    ) -> dict:
         """
         Calculate frequecy (f) for mutation (i) by :math:`\frac{N^i}{N^{total reads}}`.
 
@@ -415,7 +426,6 @@ class SequencingData:
         )
         return fitness_masked
 
-
     def _get_fitness(self, enrichment: dict) -> dict:
         """
         Calculate normalized fitness values (s) of each mutation (i) by subtracting the
@@ -452,7 +462,7 @@ class SequencingData:
             df_enriched = enrichment[sample]
             SynWT_enrichment = df_enriched["∅"]
             SynWT_mean, _ = norm.fit(SynWT_enrichment.dropna())
-            normalized = df_enriched - SynWT_mean
+            normalized = df_enriched.subtract(SynWT_mean)
             normalized.name = sample
             fitness[sample] = normalized
 
@@ -477,24 +487,33 @@ class SequencingData:
     @samples.setter
     def samples(self, value):
         self._samples = value
+        self._treatments = self._get_treatments(value)
+        self._counts = self._get_counts(self._samples, self._inputfolder)
+        self._total_reads = self._get_total_reads(self._inputfolder)
+        self._frequencies = self._get_frequencies(
+            self.counts, self.total_reads, self.extinct_add
+        )
+        if len([sample for sample in self.samples if "UT" in sample]) == 1:
+            self._enrichment = self._get_enrichment(self._frequencies)
+            self._fitness = self._get_fitness(self._enrichment)
 
     @property
     def treatments(self):
         """Treatments used in experiment"""
 
-        return self._get_treatments(self._samples)
+        return self._treatments
 
     @property
     def counts(self):
         """Counts DataFrame for each sample"""
 
-        return self._get_counts(self.samples, self._inputfolder)
+        return self._counts
 
     @property
     def total_reads(self):
         """Total number of reads found in each sample"""
 
-        return self._get_total_reads(self._inputfolder)
+        return self._total_reads
 
     @property
     def frequencies(self):
@@ -502,28 +521,50 @@ class SequencingData:
         :math:`\frac{N^i}{N^{total reads}}`
         """
 
-        return self._get_frequencies(self.counts, self.total_reads, self.extinct_add)
+        return self._frequencies
 
     @property
     def enrichment(self):
         r"""Enrichment DataFrame for each sample calculated for mutation (i) by
         :math:`log_{10}(\frac{f^i{selected}}{f^i_{unselected}})`
         """
-
-        return self._get_enrichment(self.frequencies)
+        if self._enrichment is None:
+            print("More than one untreated sample found in dataset, cannot calculate enrichment. Reset samples to recalculate.")
+        return self._enrichment
 
     @property
     def fitness(self):
         r"""Fitness DataFrame for each sample calculated for mutation (i) by
         :math:`e^i - < e^{WT} >`
         """
-        return self._get_fitness(self.enrichment)
+        if self._fitness is None:
+            print("More than one untreated sample found in dataset, cannot calculate enrichment. Reset samples to recalculate.")
+        return self._fitness
 
 
 class SequencingDataReplicates(SequencingData):
     """
     Class used to divide sequencing results into replicate datasets (n)
     """
+
+    def __init__(
+        self,
+        gene: Gene,
+        inputfolder: str,
+        read_threshold: int = 20,
+        extinct_add: int = 0.001,
+    ):
+        super().__init__(gene, inputfolder, read_threshold, extinct_add)
+        enrichment_all = {}
+        fitness_all = {}
+        for replicate in self.replicate_numbers:
+            replicate_data = self.get_replicate_data(replicate)
+            enrichment_all.update(replicate_data.enrichment)
+            fitness_all.update(replicate_data.fitness)
+        self._enrichment = enrichment_all
+        self._fitness = fitness_all
+        # self.enrichment = self._get_enrichment(self.frequencies)
+        # self.fitness = self._get_fitness(self.enrichment)
 
     @property
     def replicate_numbers(self) -> list:
@@ -571,92 +612,6 @@ class SequencingDataReplicates(SequencingData):
                 replicate_samples.append(sample)
         data.samples = replicate_samples
         return data
-
-    def _get_enrichment(self, frequencies: dict) -> dict:
-        """
-        Calculate enrichment (e) of each mutation (i) by equation
-        :math:`log_{10}(\frac{f^i{selected}}{f^i_{unselected}})`
-
-        Parameters
-        ----------
-        frequencies : dict
-            Dataframes of frequencies for samples
-
-        Returns
-        -------
-        enrichment : dict
-            Dictionary with sample names as keys and enrichment dataframes as values
-
-        Raises
-        ------
-        LookupError
-            Will not be able to calculate enrichment properly if there is more
-            than one untreated sample to compare frequencies to
-        """
-        enrichment_all = {}
-        for replicate in self.replicate_numbers:
-            replicate_data = self.get_replicate_data(replicate)
-            frequencies = replicate_data.frequencies
-
-            for sample in sorted(frequencies):
-                if "UT" in sample:
-                    continue
-                untreated = match_treated_untreated(sample)
-                df_untreated = frequencies[untreated]
-                df_treated = frequencies[sample]
-                df_enriched = df_treated.divide(df_untreated)
-                with np.errstate(divide="ignore"):
-                    df_enriched = np.log10(df_enriched)
-                    df_enriched.name = sample
-                    enrichment_all[sample] = df_enriched
-        return enrichment_all
-
-    def _get_fitness(self, enrichment: dict) -> dict:
-        """
-        Calculate normalized fitness values (s) of each mutation (i) by subtracting the
-        enrichment of synonymous wild-type mutations from the enrichment value of a
-        mutation :math:`e^i - < e^{WT} >`
-
-        Parameters
-        ----------
-        enrichment : dict
-            Reference with enrichment dataframes for all samples
-
-        Returns
-        -------
-        fitness : dict
-            Dictionary with sample names as keys and fitness dataframes as values
-
-        Raises
-        ------
-        LookupError
-            Will not be able to calculate enrichment properly (and thus
-            fitness) if there is more than one untreated sample to compare
-            frequencies to
-        """
-        fitness_all = {}
-        enrichment = self.enrichment
-
-        for sample in sorted(enrichment):
-            if "UT" in sample:
-                continue
-            df_treated = enrichment[sample]
-            SynWT_enrichment = df_treated["∅"]
-            SynWT_mean, _ = norm.fit(SynWT_enrichment.dropna())
-            normalized = df_treated - SynWT_mean
-            normalized.name = sample
-            fitness_all[sample] = normalized
-
-            # ! mask out wild-type positions
-            # fitness_masked = normalized.mask(heatmap_masks(self.gene))
-            # fitness_masked.name = sample
-            # * here mask where untreated counts are insufficient but treated counts
-            # * are large
-            # fitness_masked = self._mask_untreated_zero(
-            #     counts, fitness_masked, read_threshold=read_threshold
-            # )
-            # fitness_all[sample] = fitness_masked
-        return fitness_all
 
 
 # ! unused class
@@ -830,4 +785,21 @@ class SequencingDataSublibraries:  # pylint: disable=too-few-public-methods
     #             "Enrichment data cannot be accurately represented in combined \
     #             dataframes, see 'fullset' attribute"
     #         )
-    pass # pylint: disable=unnecessary-pass
+    pass  # pylint: disable=unnecessary-pass
+
+
+# TEM1 = TEM1_gene(
+#     "/work/greencenter/s426833/TEM-1/ref_data/pBR322_AvrII.gbk", "blaTEM-1"
+# )
+# data1 = SequencingData(
+#     TEM1,
+#     "/endosome/work/greencenter/s426833/TEM-1/experiments/20221102_TEM-1-Mutagenesis_AV",
+# )
+# data2 = SequencingDataReplicates(
+#     TEM1,
+#     "/endosome/work/greencenter/s426833/TEM-1/experiments/20221102_TEM-1-Mutagenesis_AV",
+# )
+# # data1.samples = ["AMP1", "UT1"]
+# # data2.samples = ["AMP1", "UT1"]
+# # print(data1.fitness)
+# print(data2.fitness)

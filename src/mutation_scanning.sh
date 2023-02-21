@@ -54,12 +54,13 @@ REV=$(realpath 'raw_data/'$(ls -v1 raw_data/ --color=never | grep "_S"$SLURM_ARR
 echo "[$(date +"%T")] flash --min-overlap=15 --max-overlap=151 --output_directory flash_merged --output-prefix=$SAMPLE --compress $FWD $REV"
 flash --min-overlap=15 --max-overlap=151 --output-directory=flash_merged --output-prefix=$SAMPLE --compress $FWD $REV
 echo
-
+# TODO: also change hard-coded here
 echo "[$(date +"%T")] bowtie2 -x pBR322-blaTEM1 -t --very-sensitive-local --no-unal --ma 2 --rfg 1000,1000 -p $NUMCORES -q -U flash_merged/"$SAMPLE".extendedFrags.fastq.gz |"
 echo "[$(date +"%T")] samtools view -h --threads $NUMCORES -b |"
 echo "[$(date +"%T")] samtools sort --thread $NUMCORES -o alignments/"$SAMPLE".bam"
 echo "[$(date +"%T")] samtools index -b -@ $NUMCORES alignments/"$SAMPLE".bam"
 
+# TODO: change hard-coded reference to pBR322-blaTEM1 here
 bowtie2 -x pBR322-blaTEM1 -t --very-sensitive-local --no-unal --ma 2 --rfg 1000,1000 -p $NUMCORES -q -U flash_merged/"$SAMPLE".extendedFrags.fastq.gz |
 samtools view -h --threads $NUMCORES -b |
 samtools sort --thread $NUMCORES -o alignments/$SAMPLE.bam 

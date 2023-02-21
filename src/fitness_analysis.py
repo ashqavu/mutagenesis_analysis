@@ -2,153 +2,13 @@
 """
 Utility functions for doing analyses
 """
-<<<<<<< HEAD
-=======
-import re
->>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
 import warnings
 
 import numpy as np
 import pandas as pd
-<<<<<<< HEAD
 from sklearn.mixture import GaussianMixture
 
 from sequencing_data import get_pairs, filter_fitness_read_noise, SequencingData, heatmap_masks
-=======
-from Bio.Data import IUPACData
-from sklearn.mixture import GaussianMixture
-
-from plasmid_map import Gene
-
-
-def get_pairs(treatment: str, fitness_dict: dict) -> tuple[str, str]:
-    """
-    Given a drug, extract the replicas from the fitness dict
-
-    Parameters
-    ----------
-    treatment : str
-        Drug to find replicates of
-    fitness_dict : dict
-        Reference for fitness values of all samples
-
-    Returns
-    -------
-    replica_one, replica_two : tuple[str, str]
-        Strings of replica sample names
-    """
-    treatment_pair = [drug for drug in fitness_dict if treatment in drug]
-    if not treatment_pair:
-        raise KeyError(f"No fitness data: {treatment}")
-    if len(treatment_pair) > 2:
-        raise IndexError("Treatment has more than 2 replicates to compare")
-    replica_one, replica_two = treatment_pair[0], treatment_pair[1]
-    return replica_one, replica_two
-
-
-def match_treated_untreated(sample: str) -> str:
-    """
-    Takes name of treated sample (e.g. CefX3) and matches it to the
-    corresponding untreated sample name (UT3) for proper comparisons.
-
-    Parameters
-    ----------
-    sample : str
-        Name of sample
-
-    Returns
-    -------
-    untreated : str
-        Name of corresponding untreated smple
-    """
-    num = re.sub(r"[A-Za-z]*", "", sample)
-    untreated = "UT" + num
-    return untreated
-
-
-def filter_fitness_read_noise(
-    treated: str,
-    counts_dict: dict,
-    fitness_dict: dict,
-    gene: Gene,
-    read_threshold: int = 1,
-) -> pd.DataFrame:
-    """
-    Takes DataFrames for treated sample and returns a new DataFrame with cells
-    with untreated counts under the minimum read threshold filtered out
-
-    Parameters
-    ----------
-    treated : str
-        Name of treated sample
-    counts_dict : dict
-        Dictionary containing all samples and DataFrames with mutation count values
-    fitness_dict : dict
-        Dictionary containing all samples and DataFrames with mutation fitness values
-    gene : Gene
-        Gene object for locating wild-type residues
-    read_threshold : int, optional
-        Minimum number of reads required to be included, by default 1
-
-    Returns
-    -------
-    df_treated_filtered : pd.DataFrame
-        Fitness table with insufficient counts filtered out
-    """
-    untreated = match_treated_untreated(treated)
-    df_counts_treated = counts_dict[treated]
-    df_counts_untreated = counts_dict[untreated]
-    df_treated_filtered = fitness_dict[treated].where(
-        df_counts_treated.ge(read_threshold)
-        & df_counts_untreated.ge(read_threshold)
-        & ~heatmap_masks(gene)
-    )
-    return df_treated_filtered
-
-
-def heatmap_table(gene: Gene) -> pd.DataFrame:
-    """
-    Returns DataFrame for plotting heatmaps with position indices and residue
-    columns (ACDEFGHIKLMNPQRSTVWY*∅)
-
-    Parameters
-    ----------
-    gene : Gene
-        Gene object with translated protein sequence
-
-    Returns
-    -------
-    df : pd.DataFrame
-        DataFrame of Falses
-    """
-    df = pd.DataFrame(
-        False,
-        index=np.arange(len(gene.cds_translation)),
-        columns=list(IUPACData.protein_letters + "*∅"),
-    )
-    return df
-
-
-def heatmap_masks(gene: Gene) -> pd.DataFrame:
-    """
-    Returns a bool DataFrame with wild-type cells marked as True for heatmap
-    plotting
-
-    Parameters
-    ----------
-    gene : Gene
-        Object providing translated protein sequence
-
-    Returns
-    -------
-    df_wt : pd.DataFrame
-        DataFrame to use for marking wild-type cells on heatmaps
-    """
-    df_wt = heatmap_table(gene)
-    for position, residue in enumerate(gene.cds_translation):
-        df_wt.loc[position, residue] = True
-    return df_wt
->>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
 
 
 def get_gaussian_model(df_x: pd.DataFrame, df_y: pd.DataFrame) -> GaussianMixture:
@@ -217,11 +77,7 @@ def get_ellipses(gaussian_model: GaussianMixture, sigma_cutoff):
     for n_sigma in range(1, sigma_cutoff + 1):
         width_sigma = n_sigma * width
         height_sigma = n_sigma * height
-<<<<<<< HEAD
         ellipses[n_sigma] = [center, width_sigma, height_sigma, angle] # pylint: disable=undefined-loop-variable
-=======
-        ellipses[n_sigma] = [center, width_sigma, height_sigma, angle]
->>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     return ellipses
 
 
@@ -282,13 +138,7 @@ def gaussian_significance(
 
 
 def significant_sigma_dfs(
-<<<<<<< HEAD
     data: SequencingData,
-=======
-    counts_dict: dict,
-    fitness_dict: dict,
-    gene: Gene,
->>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -297,17 +147,8 @@ def significant_sigma_dfs(
 
     Parameters
     ----------
-<<<<<<< HEAD
     data : SequencingData
         Data from experiment sequencing with count-, enrichment-, and fitness-values
-=======
-    counts_dict : dict
-        Reference for counts values of all samples
-    fitness_dict : dict
-        Reference for fitness values of all samples
-    gene : Gene
-        Gene object for locating wild-type residues
->>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     read_threshold : int, optional
         Minimum number of reads required to be included, by default 20
     sigma_cutoff : int, optional
@@ -320,7 +161,6 @@ def significant_sigma_dfs(
         Dataframes of boolean values indicating which cells of the table are
         relevant mutations for the drug
     """
-<<<<<<< HEAD
     gene = data.gene
     counts_dict = data.counts
     fitness_dict = data.fitness
@@ -333,19 +173,6 @@ def significant_sigma_dfs(
         x, y = get_pairs(drug, data.samples)
         df_x = dfs_filtered[x].mask(wt_mask)
         df_y = dfs_filtered[y].mask(wt_mask)
-=======
-    sign_sensitive_dfs = {}
-    sign_resistant_dfs = {}
-    drugs = set([x.rstrip("1234567890") for x in fitness_dict])
-    for drug in drugs:
-        x, y = get_pairs(drug, fitness_dict)
-        df_x = filter_fitness_read_noise(
-            x, counts_dict, fitness_dict, gene, read_threshold=read_threshold
-        )
-        df_y = filter_fitness_read_noise(
-            y, counts_dict, fitness_dict, gene, read_threshold=read_threshold
-        )
->>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
 
         sign_sensitive, sign_resistant, _ = gaussian_significance(
             df_x,
@@ -357,7 +184,6 @@ def significant_sigma_dfs(
     return sign_sensitive_dfs, sign_resistant_dfs
 
 def significant_sigma_mutations(
-<<<<<<< HEAD
     data: SequencingData,
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
@@ -369,20 +195,6 @@ def significant_sigma_mutations(
     drugs_all = sorted([drug for drug in data.treatments if "UT" not in drug])
     sign_sensitive_dfs, sign_resistant_dfs = significant_sigma_dfs(
         data,
-=======
-    counts_dict: dict,
-    fitness_dict: dict,
-    gene,
-    read_threshold: int = 20,
-    sigma_cutoff: int = 4,
-) -> pd.DataFrame:
-    cds_translation = gene.cds_translation
-    drugs = sorted(set([x.rstrip("1234567890") for x in fitness_dict]))
-    sign_sensitive_dfs, sign_resistant_dfs = significant_sigma_dfs(
-        counts_dict,
-        fitness_dict,
-        gene,
->>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
         read_threshold=read_threshold,
         sigma_cutoff=sigma_cutoff,
     )
@@ -392,11 +204,7 @@ def significant_sigma_mutations(
         [fitness_dict[sample_name].index, fitness_dict[sample_name].columns]
     ).values
     list_all_fitness = []
-<<<<<<< HEAD
     for drug in drugs_all:
-=======
-    for drug in drugs:
->>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
         replica_one, replica_two = get_pairs(drug, fitness_dict)
         df1 = fitness_dict[replica_one]
         df2 = fitness_dict[replica_two]
@@ -404,11 +212,7 @@ def significant_sigma_mutations(
         sign_sensitive = sign_sensitive_dfs[drug]
         sign_resistant = sign_resistant_dfs[drug]
 
-<<<<<<< HEAD
         for position, residue in point_mutations: # pylint: disable=not-an-iterable
-=======
-        for position, residue in point_mutations:
->>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore")
                 fitness_entry = {
@@ -434,8 +238,4 @@ def significant_sigma_mutations(
             list_all_fitness.append(fitness_entry)
 
     df_all_fitness_sigma = pd.DataFrame(list_all_fitness)
-<<<<<<< HEAD
     return df_all_fitness_sigma
-=======
-    return df_all_fitness_sigma
->>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97

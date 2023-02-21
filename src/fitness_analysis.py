@@ -2,11 +2,19 @@
 """
 Utility functions for doing analyses
 """
+<<<<<<< HEAD
+=======
 import re
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
 import warnings
 
 import numpy as np
 import pandas as pd
+<<<<<<< HEAD
+from sklearn.mixture import GaussianMixture
+
+from sequencing_data import get_pairs, filter_fitness_read_noise, SequencingData, heatmap_masks
+=======
 from Bio.Data import IUPACData
 from sklearn.mixture import GaussianMixture
 
@@ -140,6 +148,7 @@ def heatmap_masks(gene: Gene) -> pd.DataFrame:
     for position, residue in enumerate(gene.cds_translation):
         df_wt.loc[position, residue] = True
     return df_wt
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
 
 
 def get_gaussian_model(df_x: pd.DataFrame, df_y: pd.DataFrame) -> GaussianMixture:
@@ -208,7 +217,11 @@ def get_ellipses(gaussian_model: GaussianMixture, sigma_cutoff):
     for n_sigma in range(1, sigma_cutoff + 1):
         width_sigma = n_sigma * width
         height_sigma = n_sigma * height
+<<<<<<< HEAD
+        ellipses[n_sigma] = [center, width_sigma, height_sigma, angle] # pylint: disable=undefined-loop-variable
+=======
         ellipses[n_sigma] = [center, width_sigma, height_sigma, angle]
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     return ellipses
 
 
@@ -269,9 +282,13 @@ def gaussian_significance(
 
 
 def significant_sigma_dfs(
+<<<<<<< HEAD
+    data: SequencingData,
+=======
     counts_dict: dict,
     fitness_dict: dict,
     gene: Gene,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -280,12 +297,17 @@ def significant_sigma_dfs(
 
     Parameters
     ----------
+<<<<<<< HEAD
+    data : SequencingData
+        Data from experiment sequencing with count-, enrichment-, and fitness-values
+=======
     counts_dict : dict
         Reference for counts values of all samples
     fitness_dict : dict
         Reference for fitness values of all samples
     gene : Gene
         Gene object for locating wild-type residues
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     read_threshold : int, optional
         Minimum number of reads required to be included, by default 20
     sigma_cutoff : int, optional
@@ -298,6 +320,20 @@ def significant_sigma_dfs(
         Dataframes of boolean values indicating which cells of the table are
         relevant mutations for the drug
     """
+<<<<<<< HEAD
+    gene = data.gene
+    counts_dict = data.counts
+    fitness_dict = data.fitness
+    wt_mask = heatmap_masks(gene)
+    sign_sensitive_dfs = {}
+    sign_resistant_dfs = {}
+    dfs_filtered = filter_fitness_read_noise(counts_dict, fitness_dict, read_threshold=read_threshold)
+    drugs = set([x.rstrip("1234567890") for x in fitness_dict])
+    for drug in drugs:
+        x, y = get_pairs(drug, data.samples)
+        df_x = dfs_filtered[x].mask(wt_mask)
+        df_y = dfs_filtered[y].mask(wt_mask)
+=======
     sign_sensitive_dfs = {}
     sign_resistant_dfs = {}
     drugs = set([x.rstrip("1234567890") for x in fitness_dict])
@@ -309,6 +345,7 @@ def significant_sigma_dfs(
         df_y = filter_fitness_read_noise(
             y, counts_dict, fitness_dict, gene, read_threshold=read_threshold
         )
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
 
         sign_sensitive, sign_resistant, _ = gaussian_significance(
             df_x,
@@ -320,6 +357,19 @@ def significant_sigma_dfs(
     return sign_sensitive_dfs, sign_resistant_dfs
 
 def significant_sigma_mutations(
+<<<<<<< HEAD
+    data: SequencingData,
+    read_threshold: int = 20,
+    sigma_cutoff: int = 4,
+) -> pd.DataFrame:
+    gene = data.gene
+    counts_dict = data.counts
+    fitness_dict = data.fitness
+    cds_translation = gene.cds_translation
+    drugs_all = sorted([drug for drug in data.treatments if "UT" not in drug])
+    sign_sensitive_dfs, sign_resistant_dfs = significant_sigma_dfs(
+        data,
+=======
     counts_dict: dict,
     fitness_dict: dict,
     gene,
@@ -332,6 +382,7 @@ def significant_sigma_mutations(
         counts_dict,
         fitness_dict,
         gene,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
         read_threshold=read_threshold,
         sigma_cutoff=sigma_cutoff,
     )
@@ -341,7 +392,11 @@ def significant_sigma_mutations(
         [fitness_dict[sample_name].index, fitness_dict[sample_name].columns]
     ).values
     list_all_fitness = []
+<<<<<<< HEAD
+    for drug in drugs_all:
+=======
     for drug in drugs:
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
         replica_one, replica_two = get_pairs(drug, fitness_dict)
         df1 = fitness_dict[replica_one]
         df2 = fitness_dict[replica_two]
@@ -349,7 +404,11 @@ def significant_sigma_mutations(
         sign_sensitive = sign_sensitive_dfs[drug]
         sign_resistant = sign_resistant_dfs[drug]
 
+<<<<<<< HEAD
+        for position, residue in point_mutations: # pylint: disable=not-an-iterable
+=======
         for position, residue in point_mutations:
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore")
                 fitness_entry = {
@@ -375,4 +434,8 @@ def significant_sigma_mutations(
             list_all_fitness.append(fitness_entry)
 
     df_all_fitness_sigma = pd.DataFrame(list_all_fitness)
+<<<<<<< HEAD
     return df_all_fitness_sigma
+=======
+    return df_all_fitness_sigma
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97

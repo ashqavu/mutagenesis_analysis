@@ -14,6 +14,17 @@ from matplotlib.patches import Rectangle, Ellipse
 from scipy.stats import norm
 
 from plasmid_map import Gene
+<<<<<<< HEAD
+from sequencing_data import (
+    SequencingData,
+    get_pairs,
+    match_treated_untreated,
+    filter_fitness_read_noise,
+    heatmap_masks,
+)
+
+from fitness_analysis import gaussian_significance
+=======
 from sequencing_data import SequencingData
 from fitness_analysis import (
     get_pairs,
@@ -21,6 +32,7 @@ from fitness_analysis import (
     filter_fitness_read_noise,
     gaussian_significance,
 )
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
 
 
 def respine(ax: matplotlib.axes) -> None:
@@ -42,72 +54,88 @@ def respine(ax: matplotlib.axes) -> None:
         spine.set_lw(0.4)
 
 
-def histogram_mutation_counts(sequencing_data: SequencingData) -> matplotlib.figure:
+def histogram_mutation_counts(
+    data: SequencingData, read_threshold: int = 20
+) -> matplotlib.figure:  # pylint: disable=too-many-locals
     """
     Generate Figure of histograms plotting distribution of number of counts
     found per amino acid mutation
 
     Parameters
     ----------
-    sequencing_data : SequencingData
+    data : SequencingData
         Object providing data for number of counts found per sample
+    read_threshold : int, optional
+        Minimum number of reads for fitness value to be considered valid, by default 1
 
     Returns
     -------
     fig : matplotlib.figure
         Figure with each sample plotted on a different Subplot
     """
-    counts = sequencing_data.counts
-    num_plots = len(counts)
-    height = num_plots * 1.8
+    counts = data.counts
+    wt_mask = heatmap_masks(data.gene)
+    # num_plots = len(counts)
+    # height = num_plots * 1.8
+    samples = list(sorted(data.samples))
+    num_subplots = len(samples)
+    num_rows = num_columns = int(np.round(np.sqrt(num_subplots)))
+    if num_subplots / num_rows > num_rows:
+        num_columns = num_rows + 1
 
     fig, axes = plt.subplots(
-        nrows=num_plots, figsize=(5, height), constrained_layout=True, sharey=True
+        num_rows,
+        num_columns,
+        figsize=(num_columns * 8, num_rows * 4),
+        constrained_layout=True,
+        sharey=True,
+        sharex=True,
     )
     fig.suptitle("Distribution of counts for all amino acids")
 
     for i, sample in enumerate(counts):
-        # * these indices are specific to the mature TEM-1 protein
-        # * would need to be changed if you used a different gene
-        counts_values = counts[sample].loc[23:285, :"Y"]
-        num_missing = counts_values.lt(1).sum().sum() - counts_values.shape[0]
-        with np.errstate(divide="ignore"):
-            log_values = counts_values.where(
-                counts_values.lt(1), np.log10(counts_values)
-            )
-        log_values = log_values.where(log_values != 0.01, np.nan).values.flatten()
-        # * total number of mutants specific to TEM-1 library
-        pct_missing = num_missing / 4997
-        ax = axes[i]
-        ax.hist(
+        # ! wild-type mask
+        counts_values = counts[sample].mask(wt_mask)
+        # ! these indices are specific to the mature TEM-1 protein
+        # ! would need to be changed if you used a different gene
+        counts_values = data.counts[sample].loc[23:285].drop(["*", "∅"], axis=1)
+        library_size = counts_values.shape[0] * (counts_values.shape[1] - 1)
+        num_missing = counts_values.lt(read_threshold).sum().sum()
+        pct_missing = num_missing / library_size
+
+        # * all counts are included in histogram and determining mean number of reads
+        mean, _ = norm.fit(counts_values)
+        log_values = counts_values.where(
+            counts_values.lt(1), lambda x: np.log10(x + 1)
+        ).values.flatten()
+
+        ax = axes.flat[i]
+        sns.histplot(
             log_values,
             bins=40,
-            color="gray",
-            edgecolor="black",
-            range=(np.nanmin(log_values), np.nanmax(log_values)),
+            fc="gray",
+            ec="black",
+            ax=ax,
         )
 
         ax.set_ylabel("number of amino acid mutations", fontsize=7)
-        ax.set_xlabel("counts per amino acid mutation ($log_{10}$)", fontsize=7)
+        ax.set_xlabel("counts per amino acid mutation\n($log_{10}(x+1)$)", fontsize=7)
 
         ax.spines.top.set_visible(False)
         ax.spines.right.set_visible(False)
         ax.tick_params(direction="in", labelsize=7)
         ax.set_title(sample, fontsize=12, fontweight="bold")
 
-        counts_values = counts_values.query("@counts_values.ge(1)").values.flatten()
-        counts_values = np.extract(np.isfinite(counts_values), counts_values)
-        mean, _ = norm.fit(counts_values)
-        text_mean = (
-            f"missing: {num_missing} ({pct_missing:.2%})\nmean: {round(mean, 3)}"
-        )
+        text_mean = f"below threshold: {num_missing} ({pct_missing:.2%})\nmean of all: {round(mean, 3)}"
         annot_box = AnchoredText(
-            text_mean, loc="upper right", pad=0.8, prop=dict(size=6), frameon=True
+            text_mean, loc="upper right", pad=0.8, prop=dict(size="large"), frameon=True
         )
         ax.add_artist(annot_box)
     return fig
 
 
+<<<<<<< HEAD
+=======
 # ! Unused function
 def heatmap_missing_mutations(
     df: pd.DataFrame, ax=None, cbar_ax=None, orientation="vertical"
@@ -160,6 +188,7 @@ def heatmap_missing_mutations(
     return ax
 
 
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
 def heatmap_wrapper(
     df: pd.DataFrame,
     name: str,
@@ -233,7 +262,7 @@ def heatmap_wrapper(
         vmin=vmin,
         vmax=vmax,
         linecolor="slategray",
-        linewidths=0.2,
+        linewidths=0.0,
         clip_on=True,
         ax=ax,
         cbar_ax=cbar_ax,
@@ -267,25 +296,29 @@ def heatmap_wrapper(
 
     # * draw and label wild-type patches
     for j, i in np.asarray(np.where(df_wt)).T:
-        h.add_patch(Rectangle((i, j), 1, 1, fill=True, color="slategray", ec=None))
-        j += 0.5
         if orientation == "horizontal":
-            rotation = 90
-            fontsize = 2
+            rotation = 80
+            fontsize = 1
+            lw = 0.35
         elif orientation == "vertical":
             rotation = 0
-            fontsize = 4
-        h.text(
-            i,
-            j,
-            "/",
-            color="white",
-            va="center",
-            fontsize=fontsize,
-            fontfamily="monospace",
-            rotation=rotation,
-            clip_on=True,
+            fontsize = 2.5
+            lw = 0.75
+        h.add_patch(
+            Rectangle((i, j), 1, 1, fill=True, color="white", ec="dimgray", lw=lw)
         )
+        j += 0.5
+        # h.text(
+        #     i,
+        #     j,
+        #     "/",
+        #     color="black",
+        #     va="center",
+        #     fontsize=fontsize,
+        #     fontfamily="monospace",
+        #     rotation=rotation,
+        #     clip_on=True,
+        # )
     respine(h)
     # * reformat coordinate labeler
     if orientation == "vertical":
@@ -313,11 +346,10 @@ def heatmap_wrapper(
 
 
 def heatmap_draw(
-    counts_dict: dict,
-    fitness_dict: dict,
+    data: SequencingData,
     dataset: str,
     gene: Gene,
-    read_threshold: int = 1,
+    read_threshold: int = 20,
     vmin: float = -2.0,
     vmax: float = 2.0,
     fitness_cmap: str = "vlag",
@@ -329,16 +361,14 @@ def heatmap_draw(
 
     Parameters
     ----------
-    counts_dict : dict
-        Reference with counts dataframes for all samples
-    fitness_dict : dict
-        Reference with fitness dataframes for all samples
+    data : SequencingData
+        Data from experiment sequencing with count-, enrichment-, and fitness-values
     dataset : str
         Whether to draw a heatmap for raw (log-transformed) counts or fitness values
     gene : Gene
         Gene object that provides residue numbering
-    read_threshold : int
-        Minimum number of reads for fitness value to be considered valid, by default 1
+    read_threshold : int, optional
+        Minimum number of reads for fitness value to be considered valid, by default 20
     vmin : float, optional
         For fitness data, vmin parameter passed to sns.heatmap, by default -2.0
     vmax : float, optional
@@ -352,6 +382,9 @@ def heatmap_draw(
     -------
     fig : matplotlib.figure
     """
+    counts_dict = data.counts
+    fitness_dict = data.fitness
+    wt_mask = heatmap_masks(gene)
 
     # * determine parameters for plotting function based on figure type
     params_counts = {
@@ -370,13 +403,6 @@ def heatmap_draw(
         df_dict, num_columns, num_rows, suptitle = params_counts.values()
     elif dataset == "fitness":
         df_dict, num_columns, num_rows, suptitle = params_fitness.values()
-        # * will use filtered data here, but default is to not filter (i.e. read_threshold=1)
-        df_dict = {
-            key: filter_fitness_read_noise(
-                key, counts_dict, fitness_dict, gene, read_threshold=read_threshold
-            )
-            for key in sorted(fitness_dict)
-        }
 
     if orientation == "horizontal":
         num_columns, num_rows = num_rows, num_columns
@@ -387,7 +413,7 @@ def heatmap_draw(
     fig, axs = plt.subplots(
         num_rows,
         num_columns,
-        figsize=(5, 12),
+        figsize=(12, 12),
         dpi=300,
         layout="compressed",
         sharex=True,
@@ -396,10 +422,10 @@ def heatmap_draw(
     fig.suptitle(suptitle, fontweight="bold")
 
     # * plot each data one by one
-    for i, sample in enumerate(sorted(df_dict)):
-        data = df_dict[sample]
+    for i, sample in enumerate(sorted(counts_dict)):
         # * function-provided styling for heatmaps
         if dataset == "counts":
+            data = df_dict[sample]
             heatmap_wrapper(
                 data,
                 name=sample,
@@ -409,6 +435,13 @@ def heatmap_draw(
                 orientation=orientation,
             )
         elif dataset == "fitness":
+            # * will use filtered data here, but default is to not filter (i.e. read_threshold=1)
+            if "UT" in sample:
+                continue
+            dfs_filtered = filter_fitness_read_noise(
+                counts_dict, fitness_dict, read_threshold=read_threshold
+            )
+            data = dfs_filtered[sample].mask(wt_mask)
             heatmap_wrapper(
                 data,
                 name=sample,
@@ -494,7 +527,7 @@ def relabel_axis(
                 y = np.floor(y).astype("int")
                 residue = df_wt.columns[x]
                 pos = np.take(gene.ambler_numbering, y)
-                value = data[y, x].round(4)
+                value = data[y, x].round(4)  # pylint: disable=cell-var-from-loop
                 return f"position: {pos}, residue: {residue}, value: {value}"
 
             ax.format_coord = format_coord
@@ -513,14 +546,18 @@ def relabel_axis(
                 y = np.floor(y).astype("int")
                 residue = df_wt.columns[y]
                 pos = np.take(gene.ambler_numbering, x)
-                value = data[y, x].round(4)
+                value = data[y, x].round(4)  # pylint: disable=cell-var-from-loop
                 return f"position: {pos}, residue: {residue}, value: {value}"
 
             ax.format_coord = format_coord
 
 
 def histogram_fitness_wrapper(
-    sample: str, fitness_dict: dict, bins: list, ax: matplotlib.axes = None
+    df_fitness_sample: pd.DataFrame,
+    counts_dict: dict,
+    bins: list,
+    ax: matplotlib.axes = None,
+    read_threshold: int = 20,
 ) -> None:
     """
     Styler for individual histogram plotting fitness values. Gray bars show
@@ -529,14 +566,16 @@ def histogram_fitness_wrapper(
 
     Parameters
     ----------
-    sample : str
-        Sample to plot
-    fitness_dict : dict
-        Fitness DataFrames for all samples
+    df_fitness_sample : pd.DataFrame
+        Fitness dataframe to plot
+    counts_dict : dict
+        Reference for counts values of all samples
     bins : list
         List of bin values
     ax : matplotlib.axes, optional
         AxesSubplot to plot on, by default None
+    read_threshold : int, optional
+        Minimum number of reads for fitness value to be considered valid, by default 20
 
     Returns
     -------
@@ -544,82 +583,121 @@ def histogram_fitness_wrapper(
     """
     if ax is None:
         ax = plt.gca()
-    df_fitness = fitness_dict[sample]
-    # selecting missense mutantions
-    values_missense_filtered = df_fitness.drop(["*", "∅"], axis=1).values.flatten()
+    sample = df_fitness_sample.name
+    untreated = match_treated_untreated(sample)
+    df_counts_untreated = counts_dict[untreated]
+    df_counts_treated = counts_dict[sample]
+    # mask so that both treated and untreated are > read threshold
+    df_fitness = df_fitness_sample.where(
+        df_counts_untreated.ge(read_threshold) & df_counts_treated.ge(read_threshold)
+    )
+    # select when UT > threshold and treated < threshold (i.e. extinct)
+    df_extinct = df_fitness_sample.where(
+        df_counts_untreated.ge(read_threshold) & df_counts_treated.lt(read_threshold)
+    )
+
+    # ! TEM-1 mat peptide
+    df_fitness = df_fitness.loc[23:285]
+    df_extinct = df_extinct.loc[23:285]
+    # selecting missense mutations
+    values_missense = df_fitness.drop(["*", "∅"], axis=1).values.flatten()
     # synonymous mutants
-    values_syn_filtered = df_fitness["∅"].values.flatten()
+    values_syn = df_fitness["∅"].values.flatten()
     # stop mutations
-    values_stop_filtered = df_fitness["*"].values.flatten()
+    values_stop = df_fitness["*"].values.flatten()
+    # extinct mutations
+    values_extinct = df_extinct.drop(["*", "∅"], axis=1).values.flatten()
 
     sns.histplot(
-        values_missense_filtered,
+        values_missense,
         bins=bins,
         ax=ax,
         color="gray",
-        label="missense mutations",
+        ec="white",
+        alpha=0.6,
+        label="missense",
+        zorder=99,
     )
     sns.histplot(
-        values_syn_filtered,
+        values_syn,
         bins=bins,
         ax=ax,
-        color="palegreen",
+        color="greenyellow",
+        ec="white",
         alpha=0.6,
-        label="synonymous mutations",
+        label="synonymous",
+        zorder=101,
     )
     sns.histplot(
-        values_stop_filtered,
+        values_stop,
         bins=bins,
         ax=ax,
         color="lightcoral",
+        ec="white",
+        lw=0.6,
         alpha=0.6,
         label="stop mutations",
+        zorder=101,
+    )
+    sns.histplot(
+        values_extinct,
+        bins=bins,
+        ax=ax,
+        color="steelblue",
+        ec="white",
+        alpha=0.6,
+        label="extinct",
+        zorder=100,
     )
 
     ax.set_title(sample, fontweight="bold")
-    ax.set_xlabel("distribution of fitness effects")
-    ax.set_ylabel("counts", weight="bold")
+    # ax.set_xlabel("distribution of fitness effects")
+    ax.set_ylabel("")
 
 
 def histogram_fitness_draw(
-    counts_dict: dict, fitness_dict: dict, gene: Gene, read_threshold: int = 1
+    data: SequencingData, read_threshold: int = 20
 ) -> matplotlib.figure:
     """
     Draw a histogram figure for fitness values of a dataset
 
     Parameters
     ----------
-    counts_dict : dict
-        DataFrames of count values for all samples
-    fitness_dict : dict
-        DataFrames of count values for all samples
-    gene : Gene
-        Object for locating wild-type residues
+    data : SequencingData
+        Data from experiment sequencing with count-, enrichment-, and fitness-values
     read_threshold : int, optional
-        Minimum number of reads for fitness value to be considered valid, by default 1
+        Minimum number of reads for fitness value to be considered valid, by default 20
 
     Returns
     -------
     fig_dfe_all : matplotlib.figure
     """
+    counts_dict = data.counts
+    fitness_dict = data.fitness
+    gene = data.gene
+    # ! wild-type mask
+    wt_mask = heatmap_masks(gene)
+
     samples = list(sorted(fitness_dict))
     num_subplots = len(samples)
     num_rows = num_columns = int(np.round(np.sqrt(num_subplots)))
     if num_subplots / num_rows > num_rows:
         num_columns = num_rows + 1
 
-    fitness_dict_filter = {
-        sample: filter_fitness_read_noise(
-            sample, counts_dict, fitness_dict, gene, read_threshold=read_threshold
-        )
-        for sample in samples
-    }
-    values_fitness_all = np.concatenate(
-        [fitness_dict_filter[sample] for sample in samples]
+    dfs_fitness_filt = filter_fitness_read_noise(
+        counts_dict, fitness_dict, read_threshold=read_threshold
     )
-    bins = np.linspace(np.nanmin(values_fitness_all), np.nanmax(values_fitness_all), 51)
+
+    # get bins for histogram
+    values_fitness_all = []
+    for value in dfs_fitness_filt.values():
+        value = value.mask(wt_mask)
+        values_fitness_all.extend(value.values)
+    bins = np.linspace(np.nanmin(values_fitness_all), np.nanmax(values_fitness_all), 60)
+
+    # start drawing
     with sns.axes_style("whitegrid"):
-        fig_dfe_all, axes = plt.subplots(
+        fig_dfe_all, axs = plt.subplots(
             num_rows,
             num_columns,
             figsize=(10, 8),
@@ -627,24 +705,67 @@ def histogram_fitness_draw(
             sharey=True,
             layout="constrained",
         )
-        for i, sample in enumerate(samples):
-            ax = axes.flat[i]
-            histogram_fitness_wrapper(sample, fitness_dict_filter, bins, ax=ax)
-        fig_dfe_all.get_layout_engine().set(hspace=0.1)
+        fig_dfe_all.suptitle("fitness effects", fontweight="bold", fontsize="xx-large")
+    for i, sample in enumerate(samples):
+        if "UT" in sample:
+            continue
+        # untreated = match_treated_untreated(sample)
+        df_fitness_sample = fitness_dict[sample].mask(wt_mask)
+        df_fitness_sample.name = sample
+        fig_dfe_all.suptitle(
+            f"Distribution of fitness effects (min. reads = {read_threshold})",
+            fontsize="large",
+            fontweight="heavy",
+        )
+        ax = axs.flat[i]
+        histogram_fitness_wrapper(df_fitness_sample, counts_dict, bins, ax=ax)
+
+    fig_dfe_all.legend(
+        ["missense", "synonymous", "stop", "extinct"],
+        loc="center left",
+        bbox_to_anchor=(1, 0.5),
+        ncol=1,
+        bbox_transform=fig_dfe_all.transFigure,
+        frameon=False,
+    )
+    fig_dfe_all.supxlabel("distribution of fitness effects", fontweight="heavy")
+    fig_dfe_all.supylabel("counts", fontweight="heavy")
+
     return fig_dfe_all
 
 
 def gaussian_drug(
     drug: str,
+<<<<<<< HEAD
+    data: SequencingData,
+=======
     counts_dict: dict,
     fitness_dict: dict,
     gene: Gene,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
     ax: matplotlib.axes = None,
     xlim: tuple[float, float] = (-2.5, 2.5),
     ylim: tuple[float, float] = (-2.5, 2.5),
 ) -> matplotlib.axes:
+<<<<<<< HEAD
+    counts_dict = data.counts
+    fitness_dict = data.fitness
+    gene = data.gene
+    wt_mask = heatmap_masks(gene)
+
+    x, y = get_pairs(drug, data.samples)
+    dfs_filtered = filter_fitness_read_noise(
+        counts_dict, fitness_dict, read_threshold=read_threshold
+    )
+    df_x = dfs_filtered[x]
+    df_y = dfs_filtered[y]
+    df_x = df_x.mask(wt_mask)
+    df_y = df_y.mask(wt_mask)
+    df_x = df_x.loc[23:285]
+    df_y = df_y.loc[23:285]
+=======
     x, y = get_pairs(drug, fitness_dict)
     df_x = filter_fitness_read_noise(
         x, counts_dict, fitness_dict, gene, read_threshold=read_threshold
@@ -652,6 +773,7 @@ def gaussian_drug(
     df_y = filter_fitness_read_noise(
         y, counts_dict, fitness_dict, gene, read_threshold=read_threshold
     )
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
 
     sign_sensitive, sign_resistant, ellipses_all = gaussian_significance(
         df_x,
@@ -692,7 +814,11 @@ def gaussian_drug(
         plotnonfinite=False,
         color="gray",
         lw=2,
+<<<<<<< HEAD
+        s=5,
+=======
         s=10,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     )
     # synonymous mutations
     sns.scatterplot(
@@ -702,7 +828,11 @@ def gaussian_drug(
         plotnonfinite=False,
         color="yellowgreen",
         lw=0.5,
+<<<<<<< HEAD
+        s=5,
+=======
         s=10,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     )
     # resistant mutations
     sns.scatterplot(
@@ -712,7 +842,11 @@ def gaussian_drug(
         plotnonfinite=False,
         color="lightcoral",
         lw=0.5,
+<<<<<<< HEAD
+        s=5,
+=======
         s=10,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     )
     # sensitive mutations
     sns.scatterplot(
@@ -722,7 +856,11 @@ def gaussian_drug(
         plotnonfinite=False,
         color="dodgerblue",
         lw=0.5,
+<<<<<<< HEAD
+        s=5,
+=======
         s=10,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     )
 
     # * axis lines and limits
@@ -740,9 +878,13 @@ def gaussian_drug(
 
 
 def gaussian_replica_pair_draw(
+<<<<<<< HEAD
+    data: SequencingData,
+=======
     counts_dict: dict,
     fitness_dict: dict,
     gene: Gene,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
     xlim: tuple[float, float] = (-2.5, 2.5),
@@ -755,12 +897,17 @@ def gaussian_replica_pair_draw(
 
     Parameters
     ----------
+<<<<<<< HEAD
+    data : SequencingData
+        Data from experiment sequencing with count-, enrichment-, and fitness-values
+=======
     counts_dict : dict
         Reference with counts dataframes for all samples
     fitness_dict : dict
         Reference with fitness dataframes for all samples
     gene : Gene
         Gene object for locating wild-type residues
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     read_threshold : int, optional
         Minimum number of reads required to be included, by default 20
     sigma_cutoff : int, optional
@@ -776,7 +923,11 @@ def gaussian_replica_pair_draw(
     matplotlib.figure
     """
     # * determine shape of subplots
+<<<<<<< HEAD
+    drugs_all = sorted([drug for drug in data.treatments if "UT" not in drug])
+=======
     drugs_all = sorted(set(x.rstrip("1234567890") for x in fitness_dict))
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     num_plots = len(drugs_all)
     rows = cols = np.sqrt(num_plots)
     if not rows.is_integer():
@@ -792,9 +943,13 @@ def gaussian_replica_pair_draw(
         ax = axs.flat[i]
         gaussian_drug(
             drug,
+<<<<<<< HEAD
+            data,
+=======
             counts_dict,
             fitness_dict,
             gene,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
             read_threshold=read_threshold,
             sigma_cutoff=sigma_cutoff,
             ax=ax,
@@ -814,9 +969,13 @@ def gaussian_replica_pair_draw(
 
 def shish_kabob_drug(
     drug: str,
+<<<<<<< HEAD
+    data: SequencingData,
+=======
     counts_dict: dict,
     fitness_dict: dict,
     gene: Gene,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
     ax: matplotlib.axes = None,
@@ -828,12 +987,15 @@ def shish_kabob_drug(
     """
     drug : str
         Name of drug to plot
+<<<<<<< HEAD
+=======
     counts_dict : dict
         Reference with counts dataframes for all samples
     fitness_dict : dict
         Reference with fitness dataframes for all samples
     gene : Gene
         Gene object for locating wild-type residues
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     read_threshold : int, optional
         Minimum number of reads required to be included, by default 20
     sigma_cutoff : int, optional
@@ -854,6 +1016,21 @@ def shish_kabob_drug(
     -------
     ax : matplotlib.axes
     """
+<<<<<<< HEAD
+    fitness_dict = data.fitness
+    counts_dict = data.counts
+    gene = data.gene
+    wt_mask = heatmap_masks(gene)
+
+    replica_one, replica_two = get_pairs(drug, data.samples)
+    dfs_filtered = filter_fitness_read_noise(
+        counts_dict, fitness_dict, read_threshold=read_threshold
+    )
+    df1 = dfs_filtered[replica_one]
+    df2 = dfs_filtered[replica_two]
+    df1 = df1.mask(wt_mask)
+    df2 = df2.mask(wt_mask)
+=======
     replica_one, replica_two = get_pairs(drug, fitness_dict)
     df1 = filter_fitness_read_noise(
         replica_one, counts_dict, fitness_dict, gene, read_threshold=read_threshold
@@ -861,6 +1038,7 @@ def shish_kabob_drug(
     df2 = filter_fitness_read_noise(
         replica_two, counts_dict, fitness_dict, gene, read_threshold=read_threshold
     )
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
 
     sign_sensitive, sign_resistant, _ = gaussian_significance(
         df1,
@@ -918,7 +1096,11 @@ def shish_kabob_drug(
                     x + 0.5,
                     y + 0.5,
                     residue,
+<<<<<<< HEAD
+                    fontsize="xx-small",
+=======
                     fontsize="x-small",
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
                     ha="center",
                     va="center",
                 )
@@ -986,7 +1168,11 @@ def shish_kabob_drug(
                     x + 0.5,
                     y + 0.5,
                     residue,
+<<<<<<< HEAD
+                    fontsize="xx-small",
+=======
                     fontsize="x-small",
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
                     ha="center",
                     va="center",
                 )
@@ -1004,14 +1190,21 @@ def shish_kabob_drug(
                         color="white",
                     )
             ax.set_ylabel(drug, fontweight="heavy")
+<<<<<<< HEAD
+=======
             ax.set_anchor("W")
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
         return ax
 
 
 def shish_kabob_draw(
+<<<<<<< HEAD
+    data: SequencingData,
+=======
     counts_dict: dict,
     fitness_dict: dict,
     gene: Gene,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
     orientation: str = "horizontal",
@@ -1026,12 +1219,17 @@ def shish_kabob_draw(
 
     Parameters
     ----------
+<<<<<<< HEAD
+    data : SequencingData
+        Data from experiment sequencing with count-, enrichment-, and fitness-values
+=======
     counts_dict : dict
         Reference with counts dataframes for all samples
     fitness_dict : dict
         Reference with fitness dataframes for all samples
     gene : Gene
         Gene object for locating wild-type residues
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     read_threshold : int, optional
         Minimum number of reads required to be included, by default 20
     sigma_cutoff : int, optional
@@ -1048,16 +1246,32 @@ def shish_kabob_draw(
     ylim : tuple[float, float], optional
         Y-axis limits of gaussian figure, by default (-2.5, 2.5)
     """
+<<<<<<< HEAD
+
+    # * determine shape of subplots
+    drugs_all = sorted([drug for drug in data.treatments if "UT" not in drug])
+=======
     # * determine shape of subplots
     drugs_all = sorted(set(x.rstrip("1234567890") for x in fitness_dict))
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     gridspec_dict = {"wspace": 0, "hspace": 0}
     if orientation == "horizontal":
         num_rows, num_cols = len(drugs_all), 2
         gridspec_dict.update({"width_ratios": [2.5, 1]})
+<<<<<<< HEAD
+        if sigma_cutoff <= 3:
+            gridspec_dict.update({"width_ratios": [4.5, 1]})
+=======
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
         figsize = (7, 17)
     elif orientation == "vertical":
         num_rows, num_cols = 2, len(drugs_all)
         gridspec_dict.update({"height_ratios": [2.5, 1]})
+<<<<<<< HEAD
+        if sigma_cutoff <= 3:
+            gridspec_dict.update({"height_ratios": [4.5, 1]})
+=======
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
         figsize = (17, 7)
 
     with sns.axes_style("white"):
@@ -1079,6 +1293,24 @@ def shish_kabob_draw(
             if orientation == "horizontal":
                 ax_shish = axs[i, 0]
                 ax_gauss = axs[i, 1]
+<<<<<<< HEAD
+                ax_shish.set_anchor("W")
+                ax_gauss.set_anchor("W")
+            elif orientation == "vertical":
+                ax_shish = axs[0, i]
+                ax_gauss = axs[1, i]
+                ax_shish.set_anchor("N")
+                ax_gauss.set_anchor("N")
+            ax_gauss.set_xlabel(f"{drug}1", size="x-small")
+            ax_gauss.set_ylabel(f"{drug}2", size="x-small")
+            ax_gauss.tick_params(labelsize="xx-small")
+            if sigma_cutoff <= 3:
+                ax_shish.tick_params(labelsize=4, pad=0)
+
+            gaussian_drug(
+                drug,
+                data,
+=======
             elif orientation == "vertical":
                 ax_shish = axs[0, i]
                 ax_gauss = axs[1, i]
@@ -1092,6 +1324,7 @@ def shish_kabob_draw(
                 counts_dict,
                 fitness_dict,
                 gene,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
                 read_threshold=read_threshold,
                 sigma_cutoff=sigma_cutoff,
                 ax=ax_gauss,
@@ -1101,9 +1334,13 @@ def shish_kabob_draw(
 
             shish_kabob_drug(
                 drug,
+<<<<<<< HEAD
+                data,
+=======
                 counts_dict,
                 fitness_dict,
                 gene,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
                 read_threshold=read_threshold,
                 sigma_cutoff=sigma_cutoff,
                 ax=ax_shish,
@@ -1118,9 +1355,13 @@ def shish_kabob_draw(
 def drug_pair(
     drug1: str,
     drug2: str,
+<<<<<<< HEAD
+    data: SequencingData,
+=======
     counts_dict: dict,
     fitness_dict: dict,
     gene: Gene,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     ax: matplotlib.axes = None,
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
@@ -1154,6 +1395,23 @@ def drug_pair(
     ylim : tuple[float, float], optional
         y-axis limits of figure, by default (-2.5, 2.5)
     """
+<<<<<<< HEAD
+    counts_dict = data.counts
+    fitness_dict = data.fitness
+    gene = data.gene
+
+    if ax is None:
+        ax = plt.gca()
+    wt_mask = heatmap_masks(gene)
+    # * get cells of significant mutations
+    dfs_filtered = filter_fitness_read_noise(
+        counts_dict, fitness_dict, read_threshold=read_threshold
+    )
+    # drug 1
+    drug1_x, drug1_y = get_pairs(drug1, data.samples)
+    df1_x = dfs_filtered[drug1_x].mask(wt_mask)
+    df1_y = dfs_filtered[drug1_y].mask(wt_mask)
+=======
     if ax is None:
         ax = plt.gca()
     # * get cells of significant mutations
@@ -1165,10 +1423,16 @@ def drug_pair(
     df1_y = filter_fitness_read_noise(
         drug1_y, counts_dict, fitness_dict, gene, read_threshold=read_threshold
     )
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     df_sign_sensitive1, df_sign_resistant1, _ = gaussian_significance(
         df1_x, df1_y, sigma_cutoff=sigma_cutoff
     )
     # drug 2
+<<<<<<< HEAD
+    drug2_x, drug2_y = get_pairs(drug2, data.samples)
+    df2_x = dfs_filtered[drug2_x].mask(wt_mask)
+    df2_y = dfs_filtered[drug2_y].mask(wt_mask)
+=======
     drug2_x, drug2_y = get_pairs(drug2, fitness_dict)
     df2_x = filter_fitness_read_noise(
         drug2_x, counts_dict, fitness_dict, gene, read_threshold=read_threshold
@@ -1176,6 +1440,7 @@ def drug_pair(
     df2_y = filter_fitness_read_noise(
         drug2_y, counts_dict, fitness_dict, gene, read_threshold=read_threshold
     )
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     df_sign_sensitive2, df_sign_resistant2, _ = gaussian_significance(
         df2_x, df2_y, sigma_cutoff=sigma_cutoff
     )
@@ -1196,7 +1461,11 @@ def drug_pair(
         plotnonfinite=False,
         color="gray",
         lw=2,
+<<<<<<< HEAD
+        s=5,
+=======
         s=10,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     )
     # * sensitive mutations
     # drug 1 sensitive mutations
@@ -1207,7 +1476,11 @@ def drug_pair(
         plotnonfinite=False,
         color="dodgerblue",
         lw=2,
+<<<<<<< HEAD
+        s=5,
+=======
         s=10,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     )
     # drug 2 sensitive mutations
     sns.scatterplot(
@@ -1217,7 +1490,11 @@ def drug_pair(
         plotnonfinite=False,
         color="dodgerblue",
         lw=2,
+<<<<<<< HEAD
+        s=5,
+=======
         s=10,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     )
     # drug1-drug2 shared sensitive mutations
     shared_sensitive_1 = df1_xy.where(df_sign_sensitive1 & df_sign_sensitive2)
@@ -1229,7 +1506,11 @@ def drug_pair(
         plotnonfinite=False,
         color="mediumblue",
         lw=2,
+<<<<<<< HEAD
+        s=5,
+=======
         s=10,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
         marker="D",
     )
     # * resistance mutations
@@ -1241,7 +1522,11 @@ def drug_pair(
         plotnonfinite=False,
         color="lightcoral",
         lw=2,
+<<<<<<< HEAD
+        s=5,
+=======
         s=10,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     )
     # drug 2 resistance mutations
     sns.scatterplot(
@@ -1251,7 +1536,11 @@ def drug_pair(
         plotnonfinite=False,
         color="lightcoral",
         lw=2,
+<<<<<<< HEAD
+        s=5,
+=======
         s=10,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     )
     # drug1-drug2 shared resistance mutations
     shared_resistant_1 = df1_xy.where(df_sign_resistant1 & df_sign_resistant2)
@@ -1263,7 +1552,11 @@ def drug_pair(
         plotnonfinite=False,
         color="firebrick",
         lw=2,
+<<<<<<< HEAD
+        s=5,
+=======
         s=10,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
         marker="D",
     )
 
@@ -1278,6 +1571,13 @@ def drug_pair(
 
 
 def drug_pairs_draw(
+<<<<<<< HEAD
+    data: SequencingData,
+    read_threshold: int = 20,
+    sigma_cutoff: int = 4,
+):
+    drugs_all = sorted([drug for drug in data.treatments if "UT" not in drug])
+=======
     counts_dict: dict,
     fitness_dict: dict,
     gene: Gene,
@@ -1285,6 +1585,7 @@ def drug_pairs_draw(
     sigma_cutoff: int = 4,
 ):
     drugs_all = sorted(set(x.rstrip("1234567890") for x in fitness_dict))
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
     rows = cols = len(drugs_all) - 1
     fig, axs = plt.subplots(
         rows,
@@ -1303,9 +1604,13 @@ def drug_pairs_draw(
                 drug_pair(
                     drug_x,
                     drug_y,
+<<<<<<< HEAD
+                    data,
+=======
                     counts_dict=counts_dict,
                     fitness_dict=fitness_dict,
                     gene=gene,
+>>>>>>> 12b63d27e7c9128a8e4eb7c3a37647ea43147c97
                     ax=ax,
                     read_threshold=read_threshold,
                     sigma_cutoff=sigma_cutoff,

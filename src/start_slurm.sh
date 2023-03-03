@@ -1,4 +1,7 @@
 #!/bin/bash
+
+#USAGE bash start_slurm.sh <PATH_TO_PROJECT_FOLDER> <GENE>
+
 INPUTFOLDER=$(realpath $1)
 GENE=$2
 

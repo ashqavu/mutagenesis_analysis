@@ -1,0 +1,29 @@
+figure.dpi: 300
+figure.titlesize: 7
+figure.titleweight: bold
+
+axes.titlesize: 4
+axes.titlepad: 2.5
+axes.titleweight: bold
+axes.labelsize: 4
+axes.labelpad: 1.5
+axes.labelweight: bold
+axes.spines.bottom: True
+axes.spines.left: True
+axes.spines.top: True
+axes.spines.right: True
+
+xtick.labelsize: 2
+xtick.major.size: 0
+xtick.major.pad: 1.5
+xtick.bottom: False
+
+ytick.labelsize: 1.5
+ytick.major.size: 0
+ytick.major.pad: 1.5
+ytick.left: False
+
+figure.constrained_layout.h_pad: 0
+figure.constrained_layout.w_pad: 0
+figure.constrained_layout.hspace: 0
+figure.constrained_layout.wspace: 0

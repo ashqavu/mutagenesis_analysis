@@ -7,7 +7,7 @@
 
 #SBATCH --mail-type NONE
 
-#USAGE bash --array <1-96> <SCRIPT.SH> <PATH_TO_PROJECT_FOLDER> <GENE>
+#USAGE bash --array <1-96> <SCRIPT.SH> <PATH_TO_PROJECT_FOLDER> <GENE_NAME>
 
 STARTTIME=$SECONDS
 
@@ -15,7 +15,7 @@ INPUTFOLDER=$(realpath $1)
 GENE=$2
 
 NUMCORES="$(nproc)"
-FLASH="/work/greencenter/s426833/TEM-1/flash"
+FLASH="/work/greencenter/s426833/TEM-1/flash-1.2.11/flash"
 #TODO: change hard-coded path references
 REF_FOLDER="/work/greencenter/s426833/TEM-1/ref_data" 
 REF_GBK="$REF_FOLDER/pBR322_AvrII_rc.gbk"
@@ -51,8 +51,8 @@ echo
 FWD=$(realpath 'raw_data/'$(ls -v1 raw_data/ --color=never | grep "_S"$SLURM_ARRAY_TASK_ID"_.*R1"))
 REV=$(realpath 'raw_data/'$(ls -v1 raw_data/ --color=never | grep "_S"$SLURM_ARRAY_TASK_ID"_.*R2"))
 
-echo "[$(date +"%T")] flash --min-overlap=15 --max-overlap=151 --output_directory flash_merged --output-prefix=$SAMPLE --compress $FWD $REV"
-flash --min-overlap=15 --max-overlap=151 --output-directory=flash_merged --output-prefix=$SAMPLE --compress $FWD $REV
+echo "[$(date +"%T")] flash --min-overlap=10 --max-overlap=151 --output_directory flash_merged --output-prefix=$SAMPLE --compress $FWD $REV"
+flash --min-overlap=10 --max-overlap=151 --output-directory=flash_merged --output-prefix=$SAMPLE --compress $FWD $REV
 echo
 # TODO: also change hard-coded here
 echo "[$(date +"%T")] bowtie2 -x pBR322-blaTEM1 -t --very-sensitive-local --no-unal --ma 2 --rfg 1000,1000 -p $NUMCORES -q -U flash_merged/"$SAMPLE".extendedFrags.fastq.gz |"

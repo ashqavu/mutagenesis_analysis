@@ -44,9 +44,9 @@ def respine(ax: matplotlib.axes) -> None:
         spine.set_lw(0.4)
 
 
-def histogram_mutation_counts(
+def histogram_mutation_counts(  # pylint: disable=too-many-locals
     data: SequencingData, read_threshold: int = 20
-) -> matplotlib.figure:  # pylint: disable=too-many-locals
+) -> matplotlib.figure:
     """
     Generate Figure of histograms plotting distribution of number of counts
     found per amino acid mutation
@@ -88,7 +88,8 @@ def histogram_mutation_counts(
         counts_values = counts[sample].mask(wt_mask)
         # ! these indices are specific to the mature TEM-1 protein
         # ! would need to be changed if you used a different gene
-        counts_values = data.counts[sample].loc[23:285].drop(["*", "∅"], axis=1)
+        # counts_values = data.counts[sample].loc[23:285].drop(["*", "∅"], axis=1)
+        counts_values = data.counts[sample][:-1].drop(["*", "∅"], axis=1)
         library_size = counts_values.shape[0] * (counts_values.shape[1] - 1)
         num_missing = counts_values.lt(read_threshold).sum().sum()
         pct_missing = num_missing / library_size
@@ -170,6 +171,8 @@ def heatmap_wrapper(
     h : matplotlib.axes
         Axes object with the heatmap
     """
+    if ax is None:
+        ax = plt.gca()
     if dataset == "counts":
         with np.errstate(divide="ignore"):
             df = df.where(df.lt(1), np.log10(df))
@@ -179,28 +182,29 @@ def heatmap_wrapper(
     elif dataset == "fitness":
         cmap = fitness_cmap
 
-    xticklabels, yticklabels = 1, 10
+    xticklabels, yticklabels = 1, 1
     df_wt = heatmap_masks(gene)
+    cbar_location = "right"
 
     if orientation == "horizontal":
         df_wt = df_wt.T
         df = df.T
         xticklabels, yticklabels = yticklabels, xticklabels
+        cbar_location = "bottom"
 
     h = sns.heatmap(
         df,
         square=True,
         xticklabels=xticklabels,
         yticklabels=yticklabels,
-        cbar=cbar,
         cmap=cmap,
+        cbar=False,
         vmin=vmin,
         vmax=vmax,
         linecolor="slategray",
         linewidths=0.0,
         clip_on=True,
         ax=ax,
-        cbar_ax=cbar_ax,
     )
     h.set_facecolor("white")
     h.set_anchor("NW")
@@ -222,6 +226,20 @@ def heatmap_wrapper(
     if orientation == "horizontal":
         h.tick_params(labelsize=1.5)
         h.tick_params(axis="x", rotation=90, labelsize=2)
+
+    # * add colorbar if desired
+    if cbar is True and cbar_ax is None:
+        cbar = plt.colorbar(
+            ax.collections[0],
+            shrink=0.2,
+            fraction=0.1,
+            anchor="NW",
+            location=cbar_location,
+            use_gridspec=True,
+            pad = 0
+        )
+        cbar.ax.spines["outline"].set_lw(0.4)
+        cbar.ax.tick_params(right=False, left=False, labelsize=4, length=0, pad=3)
 
     # * set title
     if orientation == "vertical":
@@ -317,27 +335,28 @@ def heatmap_draw(
     -------
     fig : matplotlib.figure
     """
-    counts_dict = data.counts
-    fitness_dict = data.fitness
     wt_mask = heatmap_masks(gene)
 
     # * determine parameters for plotting function based on figure type
+    counts_dict = data.counts
     params_counts = {
         "df_dict": counts_dict,
         "num_columns": len(counts_dict),
         "num_rows": 1,
         "suptitle": "Raw counts of mutations ($log_{10}$)",
     }
-    params_fitness = {
-        "df_dict": fitness_dict,
-        "num_columns": len(fitness_dict),
-        "num_rows": 1,
-        "suptitle": "Fitness values",
-    }
     if dataset == "counts":
         df_dict, num_columns, num_rows, suptitle = params_counts.values()
-    elif dataset == "fitness":
-        df_dict, num_columns, num_rows, suptitle = params_fitness.values()
+    if data.fitness is not None:
+        fitness_dict = data.fitness
+        params_fitness = {
+            "df_dict": fitness_dict,
+            "num_columns": len(fitness_dict),
+            "num_rows": 1,
+            "suptitle": "Fitness values",
+        }
+        if dataset == "fitness":
+            df_dict, num_columns, num_rows, suptitle = params_fitness.values()
 
     if orientation == "horizontal":
         num_columns, num_rows = num_rows, num_columns

@@ -44,6 +44,7 @@ class Gene:
                 for key, value in f.qualifiers.items():
                     if key == "gene" and self.gene_name in value:
                         return f
+        return None
 
     @property
     def gbk_record(self) -> SeqIO.SeqRecord:
@@ -57,6 +58,17 @@ class Gene:
         return SeqIO.read(self._gbk_record, "gb")
 
     @property
+    def full_plasmid_seq(self) -> SeqIO.SeqRecord:
+        """
+        Full nucleotide sequence of plasmid map
+
+        Returns
+        -------
+        SeqIO.SeqRecord
+        """
+        return self.gbk_record.seq
+
+    @property
     def cds(self) -> Bio.SeqFeature:
         """
         Biopython feature from annotated .gbk sequence of coding region of the
@@ -68,6 +80,7 @@ class Gene:
         """
         if any(f.type == "CDS" for f in self.gbk_record.features):
             return self.get_feature_type(self.gbk_record, "CDS")
+        return None
 
     @property
     def cds_seq(self) -> SeqIO.SeqRecord:
@@ -80,6 +93,7 @@ class Gene:
         """
         if any(f.type == "CDS" for f in self.gbk_record.features):
             return self.cds.extract(self.gbk_record.seq)
+        return None
 
     @property
     def cds_translation(self) -> SeqIO.SeqRecord:
@@ -92,6 +106,7 @@ class Gene:
         """
         if any(f.type == "CDS" for f in self.gbk_record.features):
             return self.cds_seq.translate()
+        return None
 
     @property
     def codon_starts(self) -> pd.Series:
@@ -106,6 +121,7 @@ class Gene:
             return pd.Series(
                 np.arange(self.cds.location.start, self.cds.location.end, 3)
             )
+        return None
 
     @property
     def cds_codon_dict(self) -> dict:
@@ -121,6 +137,7 @@ class Gene:
                 self.cds_seq[i : i + 3] for i in range(0, len(self.cds_seq), 3)
             ]
             return {idx: value for idx, value in enumerate(cds_codons)}
+        return None
 
 
 @dataclass

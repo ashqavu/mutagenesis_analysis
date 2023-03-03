@@ -67,8 +67,9 @@ def match_treated_untreated(sample: str) -> str:
     untreated : str
         Name of corresponding untreated smple
     """
-    num = re.sub(r"[A-Za-z]*", "", sample)
-    untreated = "UT" + num
+    r = re.compile(r"_(\d+)")
+    num = r.findall(sample)[0]
+    untreated = f"UT_{num}"
     return untreated
 
 
@@ -414,7 +415,7 @@ class SequencingData:
 
         Returns
         -------
-        fitness_Masked : pd.DataFrame
+        fitness_masked : pd.DataFrame
             Masked fitness dataframe
         """
         sample_name = fitness_df.name
@@ -580,7 +581,7 @@ class SequencingDataReplicates(SequencingData):
 
         replicate_numbers = []
 
-        r = re.compile(r"\d+")
+        r = re.compile(r"_(\d+)")
         for name in self.samples:
             numbers = r.findall(name)
             replicate_numbers += numbers
@@ -606,8 +607,9 @@ class SequencingDataReplicates(SequencingData):
         """
         data = copy.deepcopy(self)
         replicate_samples = []
+        r = re.compile(r"_(\d+)")
         for sample in self.samples:
-            replicate_number = re.sub("[a-zA-Z]*?", "", sample)
+            replicate_number = r.findall(sample)[0]
             if replicate_number == str(n):
                 replicate_samples.append(sample)
         data.samples = replicate_samples

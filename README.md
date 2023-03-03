@@ -19,10 +19,8 @@ The tools featured in this pipeling include:
 | alignments | bowtie2 alignment files sorted and indexed by SAMtools and `total_reads.tsv` with total reads found after sequence mapping|
 | results/counts | `.csv` files for mutation count matrices and `.pkl` pickled forms of DataFrames from the pandas library|
 | results/mutations | `.csv` files with list of all mutations found in data and `.pkl` pickled forms of DataFrames from the pandas library |
-| results/mutations/quality_filtered | |
-| results/mutations/quality_filtered/seq_lengths | |
-| results/significant_mutations | |
-| images | |
+| results/mutations/quality_filtered | `.csv` files with list of all mutations that pass quality score filtering and `.pkl` pickled forms of DataFrames from the pandas library |
+| results/mutations/quality_filtered/seq_lengths | `.csv` files with a list of sequence lengths found in the filtered mutations list and `.pkl` pickled forms of DataFrames from the pandas library |
 
 ## Usage
 ### Quick Start

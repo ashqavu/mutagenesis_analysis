@@ -9,16 +9,20 @@ The tools featured in this pipeling include:
 
 ## Input Requirements
 * a designated project folder containing paired-end reads from Illumina sequencing in a `raw_data` folder
-* a reference genome in GENBANK format (for bowtie2 indexing) with the annotated gene of interest
+* a reference genome in GENBANK format (for bowtie2 indexing) with the annotated gene of interest as a Gene feature
 
 ## Output
 | Folder | Contents |
 |---|---|
 | job_outputs | `.err` and `.out` logs for each SLURM job |
 | flash_merged | output files from FLASh merging |
-| alignments | bowtie2 alignment files sorted and indexed by SAMtools |
-| results/counts | `.tsv` files for mutation count matrices and `total_reads.tsv` with total reads found after sequence mapping |
-| results/mutations | `.tsv` files with list of all mutations found in data and `.pkl` pickled forms of DataFrames from the pandas library |
+| alignments | bowtie2 alignment files sorted and indexed by SAMtools and `total_reads.tsv` with total reads found after sequence mapping|
+| results/counts | `.csv` files for mutation count matrices and `.pkl` pickled forms of DataFrames from the pandas library|
+| results/mutations | `.csv` files with list of all mutations found in data and `.pkl` pickled forms of DataFrames from the pandas library |
+| results/mutations/quality_filtered | |
+| results/mutations/quality_filtered/seq_lengths | |
+| results/significant_mutations | |
+| images | |
 
 ## Usage
 ### Quick Start

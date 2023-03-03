@@ -45,9 +45,7 @@ def parse_args():
         "-c",
         "--contig",
         type=str,
-        help="Input reference contig. Analysis defaults to the first contig name \
-            found in the SAM header, so these options need to be specified to search \
-            for a different region.",
+        help="Input reference contig. Analysis defaults to the first contig name found in the SAM header, so these options need to be specified to search for a different region.",
         required=False,
     )
     optional_args.add_argument(
@@ -83,7 +81,7 @@ def get_time() -> str:
     """
     return f"""[{time.strftime("%H:%M:%S")}]"""
 
-
+# @profile
 def mutation_finder(alignments, gene: Gene) -> list:
     """
     Find all mutations present in all alignments using Gene as reference
@@ -102,6 +100,7 @@ def mutation_finder(alignments, gene: Gene) -> list:
     """
     cds_start = gene.cds.location.start
     cds_end = gene.cds.location.end
+    plasmid_seq = gene.full_plasmid_seq
     insertions = []
     deletions = []
     wildtypes = []
@@ -110,19 +109,29 @@ def mutation_finder(alignments, gene: Gene) -> list:
         # * record and discard indels (mostly deletions from AT-rich regions of gene)
         if any(a == 1 for a, _ in aln.cigartuples):
             insertions.append(aln)
-            continue
+        #     continue
         elif any(a == 2 for a, _ in aln.cigartuples):
             deletions.append(aln)
-            continue
+        #     continue
 
-        # * iterate over aligned pairs to find mutation
-        aligned_pairs = aln.get_aligned_pairs(matches_only=True, with_seq=True)
         # * lowercase letter indicates substitution
         if aln.get_reference_sequence().isupper():
             wildtypes.append(aln)
-            continue
-        # * proceed along sequence until the CDS region
+        #     continue
+
+        # * get full length of reference sequence for alignment
+        # ref_positions = aln.get_reference_positions(full_length=True)
+        # ref_seq = plasmid_seq[ref_positions[0]:ref_positions[-1]]
+        # if aln.query_sequence == ref_seq:
+        #     wildtypes.append(aln)
+        #     continue
+
+        # * iterate over aligned pairs to find mutation
+        aligned_pairs = aln.get_aligned_pairs(matches_only=False, with_seq=True)
+
         for query_pos, ref_pos, ref_base in aligned_pairs:
+            if ref_pos is None:
+                continue
             if ref_base.islower():
                 mutations.append(
                     (
@@ -136,6 +145,9 @@ def mutation_finder(alignments, gene: Gene) -> list:
                         aln.get_overlap(start=cds_start, end=cds_end),
                     )
                 )
+    print(f"{len(insertions):,} sequences found with insertions")
+    print(f"{len(deletions):,} sequences found with deletions")
+    print(f"{len(wildtypes):,} sequences found with wild-type")
     return mutations
 
 
@@ -271,8 +283,7 @@ def count_mutations(df: pd.DataFrame, gene: Gene) -> tuple[pd.DataFrame, int, in
         f"Number of reads with multiple mutations passing quality check: {num_multiples:,}"
     )
     print(
-        f"Number of single mutants in CDS region passing quality check: \
-            {df_singles.dropna().shape[0]:,}"
+        f"Number of single mutants in CDS region passing quality check: {df_singles.dropna().shape[0]:,}"
     )
 
     df_counts = pd.DataFrame(
@@ -352,11 +363,6 @@ def main() -> None:
 
     # do a quality check
     df_quality_filter = df_mutations.query("base_quality >= @quality_filter")
-    print(
-        f"{df_quality_filter.shape[0] / df_mutations.shape[0]:.2%} \
-            of all nucleotide mutations found passed with \
-            quality scores >= {quality_filter}"
-    )
     df_quality_filter.to_csv(
         output_folder
         / f"mutations/quality_filtered/{sample_name}_filtered_mutations.tsv",
@@ -391,10 +397,14 @@ def main() -> None:
     print(f"{get_time()} Done")
 
     print(f"{get_time()} Calculating mutation counts...")
+    print(f"Number of mutations found: {df_mutations.shape[0]:,}")
+    print(
+        f"{df_quality_filter.shape[0]:,} ({df_quality_filter.shape[0] / df_mutations.shape[0]:.2%}) of all nucleotide mutations found passed with quality scores >= {quality_filter}"
+    )
     df_counts, num_singles, num_multiples = count_mutations(df_quality_filter, gene)
     with open(
         output_folder / "mutations/quality_filtered/multiple_mutants.tsv",
-        "r",
+        "a+",
         encoding="utf-8",
     ) as f:
         header = "sample_name\tnum_singles\tnum_multiples\n"
@@ -423,6 +433,7 @@ def main() -> None:
         "w",
         encoding="utf-8",
     ) as f:
+        header = "sample_name\tnum_singles\tnum_multiples\n"
         f.write(header)
         f.write(sorted_lines)
     df_counts.to_csv(output_folder / f"counts/{sample_name}_counts.tsv", sep="\t")

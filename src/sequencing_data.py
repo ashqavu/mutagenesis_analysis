@@ -344,6 +344,8 @@ class SequencingData:
         num_untreated = len(untreated)
         if num_untreated > 1:
             raise LookupError("More than one untreated sample found in dataset")
+        if num_untreated == 0:
+            raise LookupError("No untreated samples found in dataset")
 
         enrichment = {}
         for sample in frequencies:
@@ -419,6 +421,8 @@ class SequencingData:
         num_untreated = len(untreated)
         if num_untreated > 1:
             raise LookupError("More than one untreated sample found in dataset")
+        if num_untreated == 0:
+            raise LookupError("No untreated samples found in dataset")
 
         fitness = {}
         for sample in sorted(enrichment):

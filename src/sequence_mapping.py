@@ -100,7 +100,6 @@ def mutation_finder(alignments, gene: Gene) -> list:
     """
     cds_start = gene.cds.location.start
     cds_end = gene.cds.location.end
-    plasmid_seq = gene.full_plasmid_seq
     insertions = []
     deletions = []
     wildtypes = []
@@ -340,7 +339,9 @@ def main() -> None:
             contig = bam.header.references[0]
         num_alignments = int(
             pysam.view( # pylint: disable=no-member
-                "-c", input_file.as_posix(), f"{contig}:{cds_start+1}-{cds_end}"
+                # restrict search to gene region
+                # "-c", input_file.as_posix(), f"{contig}:{cds_start+1}-{cds_end}"
+                "-c", input_file.as_posix()
             ).strip()
         )
         alns = tqdm(
@@ -409,17 +410,7 @@ def main() -> None:
     ) as f:
         header = "sample_name\tnum_singles\tnum_multiples\n"
         if f.readline() != header:
-            with open(
-                output_folder / "mutations/quality_filtered/multiple_mutants.tsv",
-                "a",
-                encoding="utf-8",
-            ) as f:
-                f.write(header)
-    with open(
-        output_folder / "mutations/quality_filtered/multiple_mutants.tsv",
-        "a",
-        encoding="utf-8",
-    ) as f:
+            f.write(header)
         f.write(f"{sample_name}\t{num_singles}\t{num_multiples}\n")
     with open(
         output_folder / "mutations/quality_filtered/multiple_mutants.tsv",

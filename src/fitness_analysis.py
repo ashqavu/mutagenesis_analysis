@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 from sklearn.mixture import GaussianMixture
 
-from sequencing_data import get_pairs, filter_fitness_read_noise, SequencingData, heatmap_masks
+from sequencing_data import SequencingData
+from utils import get_pairs, filter_fitness_read_noise, heatmap_masks
 
 
 def get_gaussian_model(df_x: pd.DataFrame, df_y: pd.DataFrame) -> GaussianMixture:
@@ -167,7 +168,10 @@ def significant_sigma_dfs(
     wt_mask = heatmap_masks(gene)
     sign_sensitive_dfs = {}
     sign_resistant_dfs = {}
-    dfs_filtered = filter_fitness_read_noise(counts_dict, fitness_dict, read_threshold=read_threshold)
+    dfs_filtered = filter_fitness_read_noise(
+        counts_dict,
+        fitness_dict,
+        read_threshold=read_threshold)
     drugs = set([x.rstrip("1234567890") for x in fitness_dict])
     for drug in drugs:
         x, y = get_pairs(drug, data.samples)
@@ -182,6 +186,7 @@ def significant_sigma_dfs(
         sign_sensitive_dfs[drug] = sign_sensitive
         sign_resistant_dfs[drug] = sign_resistant
     return sign_sensitive_dfs, sign_resistant_dfs
+
 
 def significant_sigma_mutations(
     data: SequencingData,

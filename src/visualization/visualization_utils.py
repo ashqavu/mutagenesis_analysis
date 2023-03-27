@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+"""
+Utility functions for visualizing mutagenesis data
+"""
 
 import matplotlib
 import numpy as np

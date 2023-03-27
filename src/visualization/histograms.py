@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+"""
+Histogram plots generated for mutagenesis studies
+"""
 
 import matplotlib
 import matplotlib.pyplot as plt

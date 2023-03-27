@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+"""
+Plot drug-by-drug relations of significant mutations found in mutagenesis studies
+"""
 
 import matplotlib
 import matplotlib.pyplot as plt

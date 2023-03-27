@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+"""
+Determine and plot Gaussian significance models for drugs used in mutagenesis studies
+"""
 
 import matplotlib
 import matplotlib.pyplot as plt

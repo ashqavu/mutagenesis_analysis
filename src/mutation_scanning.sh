@@ -40,27 +40,30 @@ module load python
 cd $INPUTFOLDER
 mkdir -p flash_merged
 mkdir -p alignments
+> alignments/total_reads.tsv
 mkdir -p results/mutations
 mkdir -p results/counts
 
 FWD=$(realpath 'raw_data/'$(ls -v1 raw_data/ --color=never | grep "_S"$SLURM_ARRAY_TASK_ID"_.*R1"))
 REV=$(realpath 'raw_data/'$(ls -v1 raw_data/ --color=never | grep "_S"$SLURM_ARRAY_TASK_ID"_.*R2"))
 
+# merge paired-end sequences
 echo "[$(date +"%T")] flash --min-overlap=10 --max-overlap=151 --output_directory flash_merged --output-prefix=$SAMPLE --compress $FWD $REV"
 flash --min-overlap=10 --max-overlap=151 --output-directory=flash_merged --output-prefix=$SAMPLE --compress $FWD $REV
 echo
 
+# align and sort unpaired sequences
 echo "[$(date +"%T")] bowtie2 -x $BOWTIE_BASENAME -t --very-sensitive-local --no-unal --ma 2 --rfg 1000,1000 -p $NUMCORES -q -U flash_merged/"$SAMPLE".extendedFrags.fastq.gz |"
 echo "[$(date +"%T")] samtools view -h --threads $NUMCORES -b |"
 echo "[$(date +"%T")] samtools sort --thread $NUMCORES -o alignments/"$SAMPLE".bam"
 echo "[$(date +"%T")] samtools index -b -@ $NUMCORES alignments/"$SAMPLE".bam"
-
 
 bowtie2 -x $BOWTIE_BASENAME -t --very-sensitive-local --no-unal --ma 2 --rfg 1000,1000 -p $NUMCORES -q -U flash_merged/"$SAMPLE".extendedFrags.fastq.gz |
 samtools view -h --threads $NUMCORES -b |
 samtools sort --thread $NUMCORES -o alignments/$SAMPLE.bam 
 samtools index -b -@ $NUMCORES alignments/$SAMPLE.bam
 
+# count total number of sequences that aligned to the entire contig (plasmid map)
 TOTAL_READS=$(samtools idxstats alignments/$SAMPLE.bam -@ $NUMCORES | grep -i $BOWTIE_BASENAME | cut -f 3)
 echo -e $SAMPLE'\t'$TOTAL_READS >> alignments/total_reads.tsv
 echo "[$(date +"%T")] $TOTAL_READS reads found for $SAMPLE"

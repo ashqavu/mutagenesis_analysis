@@ -102,10 +102,15 @@ def main() -> None:
         num_alignments = int(
             pysam.view( # pylint: disable=no-member
                 # restrict search to gene region
-                # "-c", input_file.as_posix(), f"{contig}:{cds_start+1}-{cds_end}"
-                "-c", input_file.as_posix()
+                "-c", input_file.as_posix(), f"{contig}:{cds_start+1}-{cds_end}"
             ).strip()
         )
+        with open(
+            input_folder / "alignments/total_reads.tsv",
+            "a",
+            encoding="utf-8"
+        ) as f:
+            f.write(f"{sample_name}\t{num_alignments}")
         alns = tqdm(
             bam.fetch(contig=contig, start=cds_start, stop=cds_end),
             total=num_alignments,

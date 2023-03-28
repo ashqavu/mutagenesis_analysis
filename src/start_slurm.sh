@@ -51,10 +51,10 @@ while read LINE; do
   array_ids=${array_ids}$(echo -e $(echo $LINE | awk '{ print $1 }'),)
 done < $INPUTFOLDER/raw_data/SampleNames.txt
 
-mkdir -p $INPUTFOLDER/alignments
-> $INPUTFOLDER/alignments/total_reads.tsv
+# switch to folder to hold SLURM job output files
 mkdir -p $INPUTFOLDER/job_outputs
 cd $INPUTFOLDER/job_outputs
 
+# start SLURM job array
 echo -e "sbatch --array $array_ids $SCRIPT_FOLDER/mutation_scanning.sh"
 sbatch --array $array_ids $SCRIPT_FOLDER/mutation_scanning.sh

@@ -9,9 +9,8 @@
 if [[ ( $@ == "--help") ||  ( $@ == "-h") ]]
 then
   echo "Usage:"
-  echo "  bash start_slurm.sh -s <src_path> -i <project_path> -g <gene_name> -r <gbk_file> -x <bowtie_index> -f <flash_path>"
+  echo "  bash start_slurm.sh -i <project_path> -g <gene_name> -r <gbk_file> -x <bowtie_index> -f <flash_path>"
   echo
-  echo -e "  <src_path>\t\t\tPath to src/ folder with scripts"
   echo -e "  <project_path>\t\tPath to project folder" 
   echo -e "  <gene_name>\t\t\tGene name"
   echo -e "  <gbk_file>\t\t\t.gbk reference file with annotated gene"
@@ -24,7 +23,6 @@ fi
 
 while getopts 's:i:g:r:x:f:' OPTION; do
   case "${OPTION}" in
-    s) export SCRIPT_FOLDER=$(realpath ${OPTARG}) ;;
     i) export INPUTFOLDER=$(realpath ${OPTARG}) ;;
     g) export GENE="${OPTARG}" ;;
     r) export REF_GBK=$(realpath ${OPTARG}) ;;
@@ -32,6 +30,7 @@ while getopts 's:i:g:r:x:f:' OPTION; do
     f) export FLASH=$(realpath ${OPTARG}) ;;
   esac
 done
+SCRIPT_FOLDER=$(dirname $(realpath $0))
 
 # build SampleNames.txt output file matching sample number to sample name
 for FILE in $INPUTFOLDER/raw_data/*; do

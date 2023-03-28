@@ -61,7 +61,7 @@ samtools view -h --threads $NUMCORES -b |
 samtools sort --thread $NUMCORES -o alignments/$SAMPLE.bam 
 samtools index -b -@ $NUMCORES alignments/$SAMPLE.bam
 
-TOTAL_READS=$(samtools idxstats alignments/$SAMPLE.bam -@ 72 | grep -i $BOWTIE_BASENAME | cut -f 3)
+TOTAL_READS=$(samtools idxstats alignments/$SAMPLE.bam -@ $NUMCORES | grep -i $BOWTIE_BASENAME | cut -f 3)
 echo -e $SAMPLE'\t'$TOTAL_READS >> alignments/total_reads.tsv
 echo "[$(date +"%T")] $TOTAL_READS reads found for $SAMPLE"
 echo

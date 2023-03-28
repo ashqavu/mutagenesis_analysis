@@ -7,7 +7,7 @@ import matplotlib
 import numpy as np
 
 from plasmid_map import Gene
-from utils import heatmap_masks
+from utils.seq_data_utils import heatmap_masks
 
 def respine(ax: matplotlib.axes) -> None:
     """

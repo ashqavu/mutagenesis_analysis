@@ -165,30 +165,21 @@ def main() -> None:
         f"{df_quality_filter.shape[0]:,} ({df_quality_filter.shape[0] / df_mutations.shape[0]:.2%}) of all nucleotide mutations found passed with quality scores >= {quality_filter}"
     )
     df_counts, num_singles, num_multiples = count_mutations(df_quality_filter, gene)
+
+    header = "sample_name\tnum_single_mutants\tnum_multiples\n"
     with open(
         output_folder / "mutations/quality_filtered/multiple_mutants.tsv",
-        "a+",
+        "r+",
         encoding="utf-8",
     ) as f:
-        header = "sample_name\tnum_singles\tnum_multiples\n"
-        if f.readline() != header:
-            f.write(header)
-        f.write(f"{sample_name}\t{num_singles}\t{num_multiples}\n")
-    with open(
-        output_folder / "mutations/quality_filtered/multiple_mutants.tsv",
-        "r",
-        encoding="utf-8",
-    ) as f:
-        sorted_lines = "".join(natsorted(f.readlines()[1:]))
-    # ! not sure if this works, check this
-    with open(
-        output_folder / "mutations/quality_filtered/multiple_mutants.tsv",
-        "w",
-        encoding="utf-8",
-    ) as f:
-        header = "sample_name\tnum_singles\tnum_multiples\n"
-        f.write(header)
-        f.write(sorted_lines)
+        text_list = f.readlines()
+        if text_list != header:
+            text_list.insert(header, 0)
+        sorted_samples = natsorted(text_list[1:])
+        new_text_list = header + sorted_samples
+        new_text = "".join(new_text_list)
+        f.write(new_text)
+
     df_counts.to_csv(output_folder / f"counts/{sample_name}_counts.tsv", sep="\t")
     df_counts.to_pickle(output_folder / f"counts/{sample_name}_counts.pkl")
     print(f"{get_time()} Done")

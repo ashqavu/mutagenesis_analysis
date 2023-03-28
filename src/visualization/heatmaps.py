@@ -12,8 +12,8 @@ from matplotlib.patches import Rectangle
 
 from plasmid_map import Gene
 from sequencing_data import SequencingData
-from utils import filter_fitness_read_noise, heatmap_masks
-from visualization.visualization_utils import respine
+from utils.seq_data_utils import filter_fitness_read_noise, heatmap_masks
+from utils.visualization_utils import respine
 
 
 def heatmap_wrapper(

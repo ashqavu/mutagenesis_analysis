@@ -12,7 +12,7 @@ from matplotlib.offsetbox import AnchoredText
 from scipy.stats import norm
 
 from sequencing_data import SequencingData
-from utils import (
+from utils.seq_data_utils import (
     filter_fitness_read_noise,
     heatmap_masks,
     match_treated_untreated,

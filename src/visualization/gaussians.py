@@ -11,7 +11,7 @@ import seaborn as sns
 from fitness_analysis import gaussian_significance
 from matplotlib.patches import Ellipse
 from sequencing_data import SequencingData
-from utils import (
+from utils.seq_data_utils import (
     filter_fitness_read_noise,
     get_pairs,
     heatmap_masks,

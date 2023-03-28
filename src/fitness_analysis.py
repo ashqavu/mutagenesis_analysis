@@ -9,7 +9,7 @@ import pandas as pd
 from sklearn.mixture import GaussianMixture
 
 from sequencing_data import SequencingData
-from utils import get_pairs, filter_fitness_read_noise, heatmap_masks
+from utils.seq_data_utils import get_pairs, filter_fitness_read_noise, heatmap_masks
 
 
 def get_gaussian_model(df_x: pd.DataFrame, df_y: pd.DataFrame) -> GaussianMixture:

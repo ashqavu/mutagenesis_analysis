@@ -21,7 +21,7 @@ then
   exit 0
 fi
 
-while getopts 's:i:g:r:x:f:' OPTION; do
+while getopts 'i:g:r:x:f:' OPTION; do
   case "${OPTION}" in
     i) export INPUTFOLDER=$(realpath ${OPTARG}) ;;
     g) export GENE="${OPTARG}" ;;
@@ -30,7 +30,7 @@ while getopts 's:i:g:r:x:f:' OPTION; do
     f) export FLASH=$(realpath ${OPTARG}) ;;
   esac
 done
-SCRIPT_FOLDER=$(dirname $(realpath $0))
+export SCRIPT_FOLDER=$(dirname $(realpath $0))
 
 # build SampleNames.txt output file matching sample number to sample name
 for FILE in $INPUTFOLDER/raw_data/*; do
@@ -51,6 +51,8 @@ while read LINE; do
   array_ids=${array_ids}$(echo -e $(echo $LINE | awk '{ print $1 }'),)
 done < $INPUTFOLDER/raw_data/SampleNames.txt
 
+mkdir -p alignments
+> alignments/total_reads.tsv
 # switch to folder to hold SLURM job output files
 mkdir -p $INPUTFOLDER/job_outputs
 cd $INPUTFOLDER/job_outputs

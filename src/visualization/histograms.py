@@ -11,11 +11,10 @@ import seaborn as sns
 from matplotlib.offsetbox import AnchoredText
 from scipy.stats import norm
 
+from fitness_analysis import build_gaussian_model_1d, determine_significance_1d
 from sequencing_data import SequencingData
 from utils.seq_data_utils import (
-    filter_fitness_read_noise,
     heatmap_masks,
-    match_treated_untreated,
 )
 
 
@@ -56,7 +55,7 @@ def histogram_mutation_counts(  # pylint: disable=too-many-locals
         sharey=True,
         sharex=True,
     )
-    fig.suptitle("Distribution of counts for all amino acids")
+    fig.suptitle(f"Distribution of counts for all amino acids (min. reads = {read_threshold})", fontsize="xx-large")
 
     for i, sample in enumerate(counts):
         # ! wild-type mask
@@ -70,7 +69,7 @@ def histogram_mutation_counts(  # pylint: disable=too-many-locals
         pct_missing = num_missing / library_size
 
         # * all counts are included in histogram and determining mean number of reads
-        mean, _ = norm.fit(counts_values)
+        mean = np.nanmean(counts_values)
         log_values = counts_values.where(
             counts_values.lt(1), lambda x: np.log10(x + 1)
         ).values.flatten()
@@ -84,28 +83,26 @@ def histogram_mutation_counts(  # pylint: disable=too-many-locals
             ax=ax,
         )
 
-        ax.set_ylabel("number of amino acid mutations", fontsize=7)
-        ax.set_xlabel("counts per amino acid mutation\n($log_{10}(x+1)$)", fontsize=7)
+        ax.set_ylabel("")
+        # ax.set_xlabel("counts per amino acid mutation\n($log_{10}(x+1)$)", fontsize=7)
 
         ax.spines.top.set_visible(False)
         ax.spines.right.set_visible(False)
         ax.tick_params(direction="in", labelsize=7)
         ax.set_title(sample, fontsize=12, fontweight="bold")
 
-        text_mean = f"below threshold: {num_missing} ({pct_missing:.2%})\nmean of all: {round(mean, 3)}"
+        text_mean = f"below threshold (min. {read_threshold}): {num_missing} ({pct_missing:.2%})\nmean of all: {round(mean, 3)}"
         annot_box = AnchoredText(
             text_mean, loc="upper right", pad=0.8, prop=dict(size="large"), frameon=True
         )
         ax.add_artist(annot_box)
+    fig.supylabel("num of amino acid mutations", fontsize="large")
+    fig.supxlabel("counts per amino acid mutation\n($log_{10}(x+1)$)", fontsize="large")
     return fig
 
 
 def histogram_fitness_wrapper(
-    df_fitness_sample: pd.DataFrame,
-    counts_dict: dict,
-    bins: list,
-    ax: matplotlib.axes = None,
-    read_threshold: int = 20,
+    df_fitness: pd.DataFrame, bins: list, ax: matplotlib.axes = None
 ) -> None:
     """
     Styler for individual histogram plotting fitness values. Gray bars show
@@ -114,16 +111,12 @@ def histogram_fitness_wrapper(
 
     Parameters
     ----------
-    df_fitness_sample : pd.DataFrame
+    df_fitness : pd.DataFrame
         Fitness dataframe to plot
-    counts_dict : dict
-        Reference for counts values of all samples
     bins : list
         List of bin values
     ax : matplotlib.axes, optional
         AxesSubplot to plot on, by default None
-    read_threshold : int, optional
-        Minimum number of reads for fitness value to be considered valid, by default 20
 
     Returns
     -------
@@ -131,41 +124,37 @@ def histogram_fitness_wrapper(
     """
     if ax is None:
         ax = plt.gca()
-    sample = df_fitness_sample.name
-    untreated = match_treated_untreated(sample)
-    df_counts_untreated = counts_dict[untreated]
-    df_counts_treated = counts_dict[sample]
-    # mask so that both treated and untreated are > read threshold
-    df_fitness = df_fitness_sample.where(
-        df_counts_untreated.ge(read_threshold) & df_counts_treated.ge(read_threshold)
-    )
-    # select when UT > threshold and treated < threshold (i.e. extinct)
-    df_extinct = df_fitness_sample.where(
-        df_counts_untreated.ge(read_threshold) & df_counts_treated.lt(read_threshold)
-    )
+    sample = df_fitness.name
 
     # ! TEM-1 mat peptide
-    df_fitness = df_fitness.loc[23:285]
-    df_extinct = df_extinct.loc[23:285]
-    # selecting missense mutations
-    values_missense = df_fitness.drop(["*", "∅"], axis=1).values.flatten()
-    # synonymous mutants
+    # df_fitness = df_fitness.loc[23:285]
+    # * missense mutations
+    # values_missense = df_fitness.drop(["*", "∅"], axis=1).values.flatten()
+    # * synonymous mutants
     values_syn = df_fitness["∅"].values.flatten()
-    # stop mutations
+    # * stop mutations
     values_stop = df_fitness["*"].values.flatten()
-    # extinct mutations
-    values_extinct = df_extinct.drop(["*", "∅"], axis=1).values.flatten()
 
     sns.histplot(
-        values_missense,
+        df_fitness.values.flatten(),
         bins=bins,
         ax=ax,
         color="gray",
         ec="white",
         alpha=0.6,
-        label="missense",
-        zorder=99,
+        label="all",
+        zorder=98
     )
+    # sns.histplot(
+    #     values_missense,
+    #     bins=bins,
+    #     ax=ax,
+    #     color="gray",
+    #     ec="white",
+    #     alpha=0.6,
+    #     label="missense",
+    #     zorder=99,
+    # )
     sns.histplot(
         values_syn,
         bins=bins,
@@ -187,16 +176,16 @@ def histogram_fitness_wrapper(
         label="stop mutations",
         zorder=101,
     )
-    sns.histplot(
-        values_extinct,
-        bins=bins,
-        ax=ax,
-        color="steelblue",
-        ec="white",
-        alpha=0.6,
-        label="extinct",
-        zorder=100,
-    )
+    # sns.histplot(
+    #     values_extinct,
+    #     bins=bins,
+    #     ax=ax,
+    #     color="steelblue",
+    #     ec="white",
+    #     alpha=0.6,
+    #     label="extinct",
+    #     zorder=100,
+    # )
 
     ax.set_title(sample, fontweight="bold")
     # ax.set_xlabel("distribution of fitness effects")
@@ -204,7 +193,10 @@ def histogram_fitness_wrapper(
 
 
 def histogram_fitness_draw(
-    data: SequencingData, read_threshold: int = 20
+    data: SequencingData,
+    read_threshold: int = 20,
+    gaussian: bool = False,
+    sigma_cutoff: int = 3,
 ) -> matplotlib.figure:
     """
     Draw a histogram figure for fitness values of a dataset
@@ -215,6 +207,7 @@ def histogram_fitness_draw(
         Data from experiment sequencing with count-, enrichment-, and fitness-values
     read_threshold : int, optional
         Minimum number of reads for fitness value to be considered valid, by default 20
+    gaussian: bool, optional
 
     Returns
     -------
@@ -232,7 +225,7 @@ def histogram_fitness_draw(
     if num_subplots / num_rows > num_rows:
         num_columns = num_rows + 1
 
-    dfs_fitness_filt = filter_fitness_read_noise(
+    dfs_fitness_filt = data.filter_fitness_read_noise(
         counts_dict, fitness_dict, read_threshold=read_threshold
     )
 
@@ -241,7 +234,7 @@ def histogram_fitness_draw(
     for value in dfs_fitness_filt.values():
         value = value.mask(wt_mask)
         values_fitness_all.extend(value.values)
-    bins = np.linspace(np.nanmin(values_fitness_all), np.nanmax(values_fitness_all), 60)
+    bins = np.linspace(np.nanmin(values_fitness_all), np.nanmax(values_fitness_all), 40)
 
     # start drawing
     with sns.axes_style("whitegrid"):
@@ -253,23 +246,29 @@ def histogram_fitness_draw(
             sharey=True,
             layout="constrained",
         )
-        fig_dfe_all.suptitle("fitness effects", fontweight="bold", fontsize="xx-large")
-    for i, sample in enumerate(samples):
-        if "UT" in sample:
-            continue
-        # untreated = match_treated_untreated(sample)
-        df_fitness_sample = fitness_dict[sample].mask(wt_mask)
-        df_fitness_sample.name = sample
         fig_dfe_all.suptitle(
             f"Distribution of fitness effects (min. reads = {read_threshold})",
             fontsize="large",
             fontweight="heavy",
         )
+    for i, sample in enumerate(samples):
+        if "UT" in sample:
+            continue
+        df_fitness_sample = dfs_fitness_filt[sample].mask(wt_mask)
+        df_fitness_sample.name = sample
         ax = axs.flat[i]
-        histogram_fitness_wrapper(df_fitness_sample, counts_dict, bins, ax=ax)
+        histogram_fitness_wrapper(df_fitness_sample, bins, ax=ax)
+        legend_labels = ["all mutations", "synonymous", "stop"]
+        if gaussian is True:
+            mu, std = build_gaussian_model_1d(df_fitness_sample)
+            left_bound = mu - (sigma_cutoff * std)
+            right_bound = mu + (sigma_cutoff * std)
+            ax.axvline(left_bound, linestyle="dashed", color="blue")
+            ax.axvline(right_bound, linestyle="dashed", color="red")
+            legend_labels = [f"-{sigma_cutoff}$\sigma$", f"+{sigma_cutoff}$\sigma$", "all mutations", "synonymous", "stop"]
 
     fig_dfe_all.legend(
-        ["missense", "synonymous", "stop", "extinct"],
+        legend_labels,
         loc="center left",
         bbox_to_anchor=(1, 0.5),
         ncol=1,

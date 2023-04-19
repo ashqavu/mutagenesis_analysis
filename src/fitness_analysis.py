@@ -6,13 +6,14 @@ import warnings
 
 import numpy as np
 import pandas as pd
+from scipy.stats import norm
 from sklearn.mixture import GaussianMixture
 
 from sequencing_data import SequencingData
-from utils.seq_data_utils import get_pairs, filter_fitness_read_noise, heatmap_masks
+from utils.seq_data_utils import heatmap_masks
 
 
-def get_gaussian_model(df_x: pd.DataFrame, df_y: pd.DataFrame) -> GaussianMixture:
+def build_gaussian_model_2d(df_x: pd.DataFrame, df_y: pd.DataFrame) -> GaussianMixture:
     """
     Use relative fitness values of synonymous mutations to generate a Gaussian model that
     will determine the bounds of significance for fitness effects
@@ -78,15 +79,21 @@ def get_ellipses(gaussian_model: GaussianMixture, sigma_cutoff):
     for n_sigma in range(1, sigma_cutoff + 1):
         width_sigma = n_sigma * width
         height_sigma = n_sigma * height
-        ellipses[n_sigma] = [center, width_sigma, height_sigma, angle] # pylint: disable=undefined-loop-variable
+        ellipses[n_sigma] = [
+            center,
+            width_sigma,
+            height_sigma,
+            angle,
+        ]  # pylint: disable=undefined-loop-variable
     return ellipses
 
 
-def determine_significance(df_x, df_y, ellipse):
+def determine_significance_2d(df_x, df_y, ellipse):
     center_f, width, height, angle = ellipse
     width_f = width / 2
     height_f = height / 2
     angle_f = np.radians(angle)
+
     # * find points that are outside the bounds of significance
     def is_outside_ellipse(point):
         # if either fitness value is NaN, discard point
@@ -109,36 +116,36 @@ def determine_significance(df_x, df_y, ellipse):
     def is_positive_quadrant(point):
         return (np.array(point) >= 0).all()
 
-    def is_sign_sensitive(point):
+    def is_significant_sensitive(point):
         return is_outside_ellipse(point) and is_negative_quadrant(point)
 
-    def is_sign_resistant(point):
+    def is_significant_resistant(point):
         return is_outside_ellipse(point) and is_positive_quadrant(point)
 
     # * merge two dataframes element-wise for significance test
     df_xy = pd.concat([df_x, df_y]).groupby(level=0, axis=0).agg(list)
 
-    df_sign_sensitive = df_xy.applymap(is_sign_sensitive)
-    df_sign_resistant = df_xy.applymap(is_sign_resistant)
+    df_significant_sensitive = df_xy.applymap(is_significant_sensitive)
+    df_significant_resistant = df_xy.applymap(is_significant_resistant)
 
-    return df_sign_sensitive, df_sign_resistant
+    return df_significant_sensitive, df_significant_resistant
 
 
-def gaussian_significance(
+def gaussian_significance_2d(
     df_x: pd.DataFrame,
     df_y: pd.DataFrame,
     sigma_cutoff: int = 4,
 ):
-    gaussian_model = get_gaussian_model(df_x, df_y)
+    gaussian_model = build_gaussian_model_2d(df_x, df_y)
     ellipses = get_ellipses(gaussian_model, sigma_cutoff=sigma_cutoff)
     significance_ellipse = ellipses[sigma_cutoff]
-    df_sign_sensitive, df_sign_resistant = determine_significance(
+    df_sign_sensitive, df_sign_resistant = determine_significance_2d(
         df_x, df_y, significance_ellipse
     )
     return df_sign_sensitive, df_sign_resistant, ellipses
 
 
-def significant_sigma_dfs(
+def significant_sigma_dfs_2d(
     data: SequencingData,
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
@@ -168,17 +175,16 @@ def significant_sigma_dfs(
     wt_mask = heatmap_masks(gene)
     sign_sensitive_dfs = {}
     sign_resistant_dfs = {}
-    dfs_filtered = filter_fitness_read_noise(
-        counts_dict,
-        fitness_dict,
-        read_threshold=read_threshold)
+    dfs_filtered = data.filter_fitness_read_noise(
+        counts_dict, fitness_dict, read_threshold=read_threshold
+    )
     drugs = set([x.rstrip("1234567890") for x in fitness_dict])
     for drug in drugs:
-        x, y = get_pairs(drug, data.samples)
+        x, y = data.get_pairs(drug, data.samples)
         df_x = dfs_filtered[x].mask(wt_mask)
         df_y = dfs_filtered[y].mask(wt_mask)
 
-        sign_sensitive, sign_resistant, _ = gaussian_significance(
+        sign_sensitive, sign_resistant, _ = gaussian_significance_2d(
             df_x,
             df_y,
             sigma_cutoff=sigma_cutoff,
@@ -188,7 +194,7 @@ def significant_sigma_dfs(
     return sign_sensitive_dfs, sign_resistant_dfs
 
 
-def significant_sigma_mutations(
+def significant_sigma_mutations_2d(
     data: SequencingData,
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
@@ -198,7 +204,7 @@ def significant_sigma_mutations(
     fitness_dict = data.fitness
     cds_translation = gene.cds_translation
     drugs_all = sorted([drug for drug in data.treatments if "UT" not in drug])
-    sign_sensitive_dfs, sign_resistant_dfs = significant_sigma_dfs(
+    sign_sensitive_dfs, sign_resistant_dfs = significant_sigma_dfs_2d(
         data,
         read_threshold=read_threshold,
         sigma_cutoff=sigma_cutoff,
@@ -210,14 +216,14 @@ def significant_sigma_mutations(
     ).values
     list_all_fitness = []
     for drug in drugs_all:
-        replica_one, replica_two = get_pairs(drug, fitness_dict)
+        replica_one, replica_two = data.get_pairs(drug, fitness_dict)
         df1 = fitness_dict[replica_one]
         df2 = fitness_dict[replica_two]
 
         sign_sensitive = sign_sensitive_dfs[drug]
         sign_resistant = sign_resistant_dfs[drug]
 
-        for position, residue in point_mutations: # pylint: disable=not-an-iterable
+        for position, residue in point_mutations:  # pylint: disable=not-an-iterable
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore")
                 fitness_entry = {
@@ -244,3 +250,63 @@ def significant_sigma_mutations(
 
     df_all_fitness_sigma = pd.DataFrame(list_all_fitness)
     return df_all_fitness_sigma
+
+
+### 1-D Gaussian modeling
+
+
+def build_gaussian_model_1d(df: pd.DataFrame) -> tuple[float, float]:
+    """
+    Use relative fitness values of synonymous mutations to generate a 1-D Gaussian model
+    that will determine the bounds of significance for fitness effects
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Relative fitness data for drug
+
+    Returns
+    -------
+    mu, std : tuple[float, float]
+        Mean and standard deviation for 1-D Gaussian model
+    """
+
+    # * 1-D gaussian model fitting for all mutations
+    x = df
+    X = x.values.flatten()
+    X = X[~np.isnan(X)]
+    # * 1-D gaussian model fitting for synonymous mutations
+    x_syn = x["∅"]
+    X_syn = x_syn.values.flatten()
+    X_syn = X_syn[~np.isnan(X_syn)]
+    # * fit 1-D gaussian model
+    mu, std = norm.fit(X_syn)
+
+    return mu, std
+
+
+def determine_significance_1d(
+    df: pd.DataFrame, mu: float, std: float, sigma_cutoff: int = 5
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def is_significant(value):
+        if np.isnan(value).any():
+            return False
+        x = value
+        return x < (mu - sigma_cutoff * std) or (x > (mu + sigma_cutoff * std))
+
+    def is_positive_quadrant(value):
+        return (np.array(value) >= 0).all()
+
+    def is_negative_quadrant(value):
+        return (np.array(value) <= 1).all()
+
+    def is_significant_sensitive(value):
+        return is_significant(value) and is_negative_quadrant(value)
+
+    def is_significant_resistant(value):
+        return is_significant(value) and is_positive_quadrant(value)
+
+    df_significant_sensitive = df.applymap(is_significant_sensitive)
+    df_significant_resistant = df.applymap(is_significant_resistant)
+
+    return df_significant_sensitive, df_significant_resistant

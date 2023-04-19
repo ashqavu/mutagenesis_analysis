@@ -7,18 +7,14 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-
-from fitness_analysis import gaussian_significance
 from matplotlib.patches import Ellipse
+
+from fitness_analysis import gaussian_significance_2d
 from sequencing_data import SequencingData
-from utils.seq_data_utils import (
-    filter_fitness_read_noise,
-    get_pairs,
-    heatmap_masks,
-)
+from utils.seq_data_utils import heatmap_masks
 
 
-def gaussian_drug(
+def gaussian_drug_2d(
     drug: str,
     data: SequencingData,
     read_threshold: int = 20,
@@ -32,8 +28,8 @@ def gaussian_drug(
     gene = data.gene
     wt_mask = heatmap_masks(gene)
 
-    x, y = get_pairs(drug, data.samples)
-    dfs_filtered = filter_fitness_read_noise(
+    x, y = data.get_pairs(drug, data.samples)
+    dfs_filtered = data.filter_fitness_read_noise(
         counts_dict, fitness_dict, read_threshold=read_threshold
     )
     df_x = dfs_filtered[x]
@@ -43,7 +39,7 @@ def gaussian_drug(
     df_x = df_x.loc[23:285]
     df_y = df_y.loc[23:285]
 
-    sign_sensitive, sign_resistant, ellipses_all = gaussian_significance(
+    sign_sensitive, sign_resistant, ellipses_all = gaussian_significance_2d(
         df_x,
         df_y,
         sigma_cutoff=sigma_cutoff,
@@ -129,7 +125,7 @@ def gaussian_drug(
     return ax
 
 
-def gaussian_replica_pair_draw(
+def gaussian_replica_pair_draw_2d(
     data: SequencingData,
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
@@ -174,7 +170,7 @@ def gaussian_replica_pair_draw(
     fig, axs = plt.subplots(rows, cols, figsize=(10, 10), layout="compressed", dpi=300)
     for i, drug in enumerate(sorted(drugs_all)):
         ax = axs.flat[i]
-        gaussian_drug(
+        gaussian_drug_2d(
             drug,
             data,
             read_threshold=read_threshold,

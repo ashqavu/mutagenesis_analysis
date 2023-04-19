@@ -52,7 +52,7 @@ def mutation_finder(alignments, gene: Gene) -> list:
         if aln.get_reference_sequence().isupper():
             wildtypes.append(aln)
 
-        # * iterate over aligned pairs to find mutation
+        # # * iterate over aligned pairs to find mutation
         aligned_pairs = aln.get_aligned_pairs(matches_only=False, with_seq=True)
 
         for query_pos, ref_pos, ref_base in aligned_pairs:
@@ -71,6 +71,7 @@ def mutation_finder(alignments, gene: Gene) -> list:
                         aln.get_overlap(start=cds_start, end=cds_end),
                     )
                 )
+
     print(f"{len(insertions):,} sequences found with insertions")
     print(f"{len(deletions):,} sequences found with deletions")
     print(f"{len(wildtypes):,} sequences found with wild-type")
@@ -97,7 +98,7 @@ def read_mutations(mutations: list, gene: Gene) -> pd.DataFrame:
     translation_table = CodonTable.standard_dna_table.forward_table
     stop_codons = CodonTable.standard_dna_table.stop_codons
     translation_table.update({stop_codon: "*" for stop_codon in stop_codons})
-    
+
     df = pd.DataFrame(
         mutations,
         columns=[

@@ -12,7 +12,7 @@ from matplotlib.patches import Rectangle
 
 from plasmid_map import Gene
 from sequencing_data import SequencingData
-from utils.seq_data_utils import filter_fitness_read_noise, heatmap_masks
+from utils.seq_data_utils import heatmap_masks
 from utils.visualization_utils import respine
 
 
@@ -267,12 +267,16 @@ def heatmap_draw(
     fig.suptitle(suptitle, fontweight="bold")
 
     # * plot each data one by one
-    for i, sample in enumerate(sorted(counts_dict)):
+    if dataset == "counts":
+        sorted_samples = sorted(counts_dict)
+    elif dataset == "fitness":
+        sorted_samples = sorted(fitness_dict)
+    for i, sample in enumerate(sorted_samples):
         # * function-provided styling for heatmaps
         if dataset == "counts":
-            data = df_dict[sample]
+            plot_data = df_dict[sample]
             heatmap_wrapper(
-                data,
+                plot_data,
                 name=sample,
                 gene=gene,
                 dataset=dataset,
@@ -283,12 +287,12 @@ def heatmap_draw(
             # * will use filtered data here, but default is to not filter (i.e. read_threshold=1)
             if "UT" in sample:
                 continue
-            dfs_filtered = filter_fitness_read_noise(
+            dfs_filtered = data.filter_fitness_read_noise(
                 counts_dict, fitness_dict, read_threshold=read_threshold
             )
-            data = dfs_filtered[sample].mask(wt_mask)
+            plot_data = dfs_filtered[sample].mask(wt_mask)
             heatmap_wrapper(
-                data,
+                plot_data,
                 name=sample,
                 gene=gene,
                 dataset=dataset,

@@ -11,109 +11,20 @@ sequencing.
 
 import copy
 import csv
+from functools import reduce
 import glob
 import re
 from pathlib import Path
 
-from Bio.Data import IUPACData
 import numpy as np
 import pandas as pd
 from natsort import natsorted
 from scipy.stats import norm
 
 from plasmid_map import Gene
+from utils.seq_data_utils import heatmap_masks
 
 # TODO: fix @fitness to not be a property i guess
-
-
-def get_pairs(treatment: str, samples: list) -> tuple[str, str]:
-    """
-    Given a drug, extract the replicas from the list of samples
-
-    Parameters
-    ----------
-    treatment : str
-        Drug to find replicates of
-    samples : list
-        Reference for fitness values of all samples
-
-    Returns
-    -------
-    replica_one, replica_two : tuple[str, str]
-        Strings of replica sample names
-    """
-    treatment_pair = [sample for sample in samples if treatment in sample]
-    if not treatment_pair:
-        raise KeyError(f"No fitness data: {treatment}")
-    if len(treatment_pair) > 2:
-        raise IndexError("Treatment has more than 2 replicates to compare")
-    replica_one, replica_two = treatment_pair[0], treatment_pair[1]
-    return replica_one, replica_two
-
-
-def match_treated_untreated(sample: str) -> str:
-    """
-    Takes name of treated sample (e.g. CefX3) and matches it to the
-    corresponding untreated sample name (UT3) for proper comparisons.
-
-    Parameters
-    ----------
-    sample : str
-        Name of sample
-
-    Returns
-    -------
-    untreated : str
-        Name of corresponding untreated smple
-    """
-    r = re.compile(r"_(\d+)")
-    num = r.findall(sample)[0]
-    untreated = f"UT_{num}"
-    return untreated
-
-
-def heatmap_table(gene: Gene) -> pd.DataFrame:
-    """
-    Returns DataFrame for plotting heatmaps with position indices and residue
-    columns (ACDEFGHIKLMNPQRSTVWY*∅)
-
-    Parameters
-    ----------
-    gene : Gene
-        Gene object with translated protein sequence
-
-    Returns
-    -------
-    df : pd.DataFrame
-        DataFrame of Falses
-    """
-    df = pd.DataFrame(
-        False,
-        index=np.arange(len(gene.cds_translation)),
-        columns=list(IUPACData.protein_letters + "*∅"),
-    )
-    return df
-
-
-def heatmap_masks(gene: Gene) -> pd.DataFrame:
-    """
-    Returns a bool DataFrame with wild-type cells marked as True for heatmap
-    plotting
-
-    Parameters
-    ----------
-    gene : Gene
-        Object providing translated protein sequence
-
-    Returns
-    -------
-    df_wt : pd.DataFrame
-        DataFrame to use for marking wild-type cells on heatmaps
-    """
-    df_wt = heatmap_table(gene)
-    for position, residue in enumerate(gene.cds_translation):
-        df_wt.loc[position, residue] = True
-    return df_wt
 
 
 class SequencingData:
@@ -130,7 +41,6 @@ class SequencingData:
     extinct_add : int, optional
         Amount to add to counts when calculating frequencies in order to separate
         out the extinct mutations, by default 0.001
-
     """
 
     def __init__(
@@ -332,26 +242,15 @@ class SequencingData:
         -------
         enrichment : dict
             Dictionary with sample names as keys and enrichment dataframes as values
-
-        Raises
-        ------
-        LookupError
-            Will not be able to calculate enrichment properly if there is more
-            than one untreated sample to compare frequencies to
         """
 
         untreated = [x for x in frequencies if "UT" in x]
-        num_untreated = len(untreated)
-        if num_untreated > 1:
-            raise LookupError("More than one untreated sample found in dataset")
-        if num_untreated == 0:
-            raise LookupError("No untreated samples found in dataset")
 
         enrichment = {}
         for sample in frequencies:
             if "UT" in sample:
                 continue
-            untreated = match_treated_untreated(sample)
+            untreated = self.match_treated_untreated(sample)
             df_untreated = frequencies[untreated]
             df_treated = frequencies[sample]
             df_enriched = df_treated.divide(df_untreated)
@@ -385,7 +284,7 @@ class SequencingData:
             Masked fitness dataframe
         """
         sample_name = fitness_df.name
-        untreated = match_treated_untreated(sample_name)
+        untreated = self.match_treated_untreated(sample_name)
         untreated_counts = counts_dict[untreated]
         treated_counts = counts_dict[sample_name]
         fitness_masked = fitness_df.mask(
@@ -408,21 +307,7 @@ class SequencingData:
         -------
         fitness : dict
             Dictionary with sample names as keys and fitness dataframes as values
-
-        Raises
-        ------
-        LookupError
-            Will not be able to calculate enrichment properly (and thus
-            fitness) if there is more than one untreated sample to compare
-            frequencies to
         """
-
-        untreated = [x for x in enrichment if "UT" in x]
-        num_untreated = len(untreated)
-        if num_untreated > 1:
-            raise LookupError("More than one untreated sample found in dataset")
-        if num_untreated == 0:
-            raise LookupError("No untreated samples found in dataset")
 
         fitness = {}
         for sample in sorted(enrichment):
@@ -430,21 +315,23 @@ class SequencingData:
                 continue
             df_enriched = enrichment[sample]
             SynWT_enrichment = df_enriched["∅"]
-            SynWT_mean, _ = norm.fit(SynWT_enrichment.dropna())
+            # ? calculate mean from fitting normalized curve or by nanmean
+            # SynWT_mean, _ = norm.fit(SynWT_enrichment.dropna())
+            SynWT_mean = np.nanmean(SynWT_enrichment)
             normalized = df_enriched.subtract(SynWT_mean)
             normalized.name = sample
             fitness[sample] = normalized
 
             # ! mask out wild-type positions
-            # fitness_masked = normalized.mask(heatmap_masks(self.gene))
-            # fitness_masked.name = sample
+            fitness_masked = normalized.mask(heatmap_masks(self.gene))
+            fitness_masked.name = sample
             # * here mask where untreated counts are insufficient but treated counts
             # * are large (i.e. highly beneficial mutations)
             # fitness_masked = self._mask_untreated_zero(
             #     counts, fitness_masked, read_threshold=read_threshold
             # )
             # fitness_masked.name = sample
-            # fitness[sample] = fitness_masked
+            fitness[sample] = fitness_masked
         return fitness
 
     @property
@@ -460,7 +347,7 @@ class SequencingData:
         self._counts = self._get_counts(self._samples, self._inputfolder)
         self._total_reads = self._get_total_reads(self._inputfolder)
         self._frequencies = self._get_frequencies(
-            self.counts, self.total_reads, self.extinct_add
+            self._counts, self._total_reads, self.extinct_add
         )
         if len([sample for sample in self.samples if "UT" in sample]) == 1:
             self._enrichment = self._get_enrichment(self._frequencies)
@@ -498,7 +385,7 @@ class SequencingData:
         :math:`log_{10}(\frac{f^i{selected}}{f^i_{unselected}})`
         """
         if self._enrichment is None:
-            print("More than one untreated sample found in dataset, cannot calculate enrichment. Reset samples to recalculate.")
+            print("Either more than one untreated sample found in dataset, cannot calculate enrichment. Reset samples to recalculate.")
         return self._enrichment
 
     @property
@@ -507,8 +394,88 @@ class SequencingData:
         :math:`e^i - < e^{WT} >`
         """
         if self._fitness is None:
-            print("More than one untreated sample found in dataset, cannot calculate enrichment. Reset samples to recalculate.")
+            print("Either more than one untreated sample found in dataset, cannot calculate enrichment. Reset samples to recalculate.")
         return self._fitness
+
+    def get_pairs(self, treatment: str, samples: list) -> tuple[str, str]:
+        """
+        Given a drug, extract the replicas from the list of samples
+
+        Parameters
+        ----------
+        treatment : str
+            Drug to find replicates of
+        samples : list
+            Reference for fitness values of all samples
+
+        Returns
+        -------
+        replica_one, replica_two : tuple[str, str]
+            Strings of replica sample names
+        """
+        treatment_pair = [sample for sample in samples if treatment in sample]
+        if not treatment_pair:
+            raise KeyError(f"No fitness data: {treatment}")
+        if len(treatment_pair) > 2:
+            raise IndexError("Treatment has more than 2 replicates to compare")
+        replica_one, replica_two = treatment_pair[0], treatment_pair[1]
+        return replica_one, replica_two
+
+
+    def match_treated_untreated(self, sample: str) -> str:
+        """
+        Takes name of treated sample (e.g. CefX3) and matches it to the
+        corresponding untreated sample name (UT3) for proper comparisons.
+
+        Parameters
+        ----------
+        sample : str
+            Name of sample
+
+        Returns
+        -------
+        untreated : str
+            Name of corresponding untreated smple
+        """
+        r = re.compile(r"_(\d+)")
+        num = r.findall(sample)[0]
+        untreated = f"UT_{num}"
+        return untreated
+
+    def filter_fitness_read_noise(
+        self,
+        counts_dict: dict,
+        fitness_dict: dict,
+        read_threshold: int = 20,
+    ) -> dict:
+        """
+        Takes DataFrames for treated sample and returns a new DataFrame with cells
+        with untreated counts under the minimum read threshold filtered out
+
+        Parameters
+        ----------
+        counts_dict : dict
+            Reference with counts dataframes for all samples
+        fitness_dict : dict
+            Reference with fitness dataframes for all samples
+        read_threshold : int, optional
+            Minimum number of reads required to be included, by default 20
+
+        Returns
+        -------
+        df_treated_filtered : dict
+            Fitness tables with insufficient counts filtered out
+        """
+        dfs_filtered = {}
+        for sample in sorted(fitness_dict):
+            untreated = self.match_treated_untreated(sample)
+            df_counts_untreated = counts_dict[untreated]
+            df_counts_sample = counts_dict[sample]
+            df_fitness_sample = fitness_dict[sample]
+            dfs_filtered[sample] = df_fitness_sample.where(
+                df_counts_sample.ge(read_threshold) & df_counts_untreated.ge(read_threshold)
+            )
+        return dfs_filtered
 
 
 class SequencingDataReplicates(SequencingData):
@@ -580,3 +547,103 @@ class SequencingDataReplicates(SequencingData):
                 replicate_samples.append(sample)
         data.samples = replicate_samples
         return data
+
+class SequencingDataPools(SequencingData):
+    r"""
+    Class for pooling counts data and calculating fitness values thereafter
+
+    Parameters
+    ---------
+    gene : Gene
+        Gene object from `plasmid_map`
+    inputfolder : str
+        Project folder
+    read_threshold : int, optional
+        Minimum of reads for a fitness value to be included, by default 20
+    extinct_add : int, optional
+        Amount to add to counts when calculating frequencies in order to separate
+        out the extinct mutations, by default 0.001
+    """
+
+    def __init__(
+        self,
+        gene: Gene,
+        inputfolder: str,
+        read_threshold: int = 20,
+        extinct_add: int = 0.001,
+    ):
+        super().__init__(gene, inputfolder, read_threshold, extinct_add)
+        # self._pooled_counts = self._get_pooled_counts()
+        # self._pooled_total_reads = self._get_pooled_total_reads()
+
+    @SequencingData.samples.setter
+    def samples(self, value):
+        self._samples = value
+        self._treatments = value
+        self._counts = self._get_pooled_counts()
+        self._total_reads = self._get_pooled_total_reads()
+        self._frequencies = self._get_frequencies(
+            self._counts, self._total_reads, self.extinct_add
+        )
+        if len([sample for sample in self.samples if "UT" in sample]) == 1:
+            self._enrichment = self._get_enrichment(self._frequencies)
+            self._fitness = self._get_fitness(self._enrichment)
+
+    def match_treated_untreated(self, sample: str) -> str:
+        return "UT"
+
+    def _get_pooled_counts(self) -> dict:
+        """
+        Override function pools counts for processing
+        """
+        counts_data = {}
+        pooled_counts = {}
+        for treatment in self.treatments:
+            treatment_counts = [value for key, value in self.counts.items() if treatment in key]
+            counts_data[treatment] = treatment_counts
+        for treatment in self.treatments:
+            pooled_counts_df = reduce(lambda a, b: a.add(b, fill_value=0), counts_data[treatment])
+            pooled_counts[treatment] = pooled_counts_df
+        return dict(natsorted(pooled_counts.items()))
+
+    def _get_pooled_total_reads(self) -> dict:
+        pooled_total_reads = {}
+        for treatment in self.treatments:
+            treatment_counts = [value for key, value in self.total_reads.items() if treatment in key]
+            pooled_total_reads[treatment] = sum(treatment_counts)
+        return dict(natsorted(pooled_total_reads.items()))
+
+    def filter_fitness_read_noise(
+        self,
+        counts_dict: dict,
+        fitness_dict: dict,
+        read_threshold: int = 20,
+    ) -> dict:
+        """
+        Takes DataFrames for treated sample and returns a new DataFrame with cells
+        with untreated counts under the minimum read threshold filtered out
+
+        Parameters
+        ----------
+        counts_dict : dict
+            Reference with counts dataframes for all samples
+        fitness_dict : dict
+            Reference with fitness dataframes for all samples
+        read_threshold : int, optional
+            Minimum number of reads required to be included, by default 20
+
+        Returns
+        -------
+        df_treated_filtered : dict
+            Fitness tables with insufficient counts filtered out
+        """
+        dfs_filtered = {}
+        for sample in sorted(fitness_dict):
+            untreated = self.match_treated_untreated(sample)
+            df_counts_untreated = counts_dict[untreated]
+            df_counts_sample = counts_dict[sample]
+            df_fitness_sample = fitness_dict[sample]
+            dfs_filtered[sample] = df_fitness_sample.where(
+                df_counts_sample.ge(read_threshold) & df_counts_untreated.ge(read_threshold)
+            )
+        return dfs_filtered

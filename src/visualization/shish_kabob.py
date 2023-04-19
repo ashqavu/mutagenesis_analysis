@@ -7,16 +7,17 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-
-from fitness_analysis import gaussian_significance
 from matplotlib.patches import Rectangle
+
+from fitness_analysis import significant_sigma_dfs_2d
 from sequencing_data import SequencingData
-from utils.seq_data_utils import filter_fitness_read_noise, get_pairs, heatmap_masks
-from visualization.gaussians import gaussian_drug
+from utils.seq_data_utils import heatmap_masks
+from visualization.gaussians import gaussian_drug_2d
 
 
 def shish_kabob_drug(
     drug: str,
+    gaussian: str,
     data: SequencingData,
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
@@ -29,6 +30,8 @@ def shish_kabob_drug(
     """
     drug : str
         Name of drug to plot
+    gaussian : str
+        "nD" dimensions to use for Gaussian significance
     read_threshold : int, optional
         Minimum number of reads required to be included, by default 20
     sigma_cutoff : int, optional
@@ -54,34 +57,40 @@ def shish_kabob_drug(
     gene = data.gene
     wt_mask = heatmap_masks(gene)
 
-    replica_one, replica_two = get_pairs(drug, data.samples)
-    dfs_filtered = filter_fitness_read_noise(
-        counts_dict, fitness_dict, read_threshold=read_threshold
-    )
-    df1 = dfs_filtered[replica_one]
-    df2 = dfs_filtered[replica_two]
-    df1 = df1.mask(wt_mask)
-    df2 = df2.mask(wt_mask)
-
-    sign_sensitive, sign_resistant, _ = gaussian_significance(
-        df1,
-        df2,
-        sigma_cutoff=sigma_cutoff,
-    )
-
     if ax is None:
         ax = plt.gca()
+
+    dfs_filtered = data.filter_fitness_read_noise(
+        counts_dict, fitness_dict, read_threshold=read_threshold
+    )
+    
+    if gaussian == "2D":
+        replica_one, replica_two = data.get_pairs(drug, data.samples)
+        df1 = dfs_filtered[replica_one]
+        df2 = dfs_filtered[replica_two]
+        df1 = df1.mask(wt_mask)
+        df2 = df2.mask(wt_mask)
+
+        sign_sensitive, sign_resistant, _ = gaussian_significance_2d(
+            df1,
+            df2,
+            sigma_cutoff=sigma_cutoff,
+        )
+
         # * get residue positions with significant mutations
-    sign_positions = (
-        sign_sensitive.drop("*", axis=1) | sign_resistant.drop("*", axis=1)
-    ).sum(axis=1) > 0
-    sign_positions = sign_positions[sign_positions].index
-    # * find fitness value of greatest magnitude between pair
-    df = df1[df1.abs().ge(df2.abs())]
-    df.update(df2[df2.abs().ge(df1.abs())])
-    # * select only mutations with significant fitness values
-    df_masked = df.where(sign_resistant | sign_sensitive)
-    df_masked = df_masked.drop("∅", axis=1)
+        sign_positions = (
+            sign_sensitive.drop("*", axis=1) | sign_resistant.drop("*", axis=1)
+        ).sum(axis=1) > 0
+        sign_positions = sign_positions[sign_positions].index
+        # * find fitness value of greatest magnitude between pair
+        df = df1[df1.abs().ge(df2.abs())]
+        df.update(df2[df2.abs().ge(df1.abs())])
+        # * select only mutations with significant fitness values
+        df_masked = df.where(sign_resistant | sign_sensitive)
+        df_masked = df_masked.drop("∅", axis=1)
+    
+    elif gaussian == "1D":
+        sign_sensitive, sign_resistant = 
 
     with sns.axes_style("white"):
         if orientation == "vertical":
@@ -291,7 +300,7 @@ def shish_kabob_draw(
             if sigma_cutoff <= 3:
                 ax_shish.tick_params(labelsize=4, pad=0)
 
-            gaussian_drug(
+            gaussian_drug_2d(
                 drug,
                 data,
                 read_threshold=read_threshold,

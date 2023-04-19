@@ -110,7 +110,7 @@ def main() -> None:
             "a",
             encoding="utf-8"
         ) as f:
-            f.write(f"{sample_name}\t{num_alignments}")
+            f.write(f"{sample_name}\t{num_alignments}\n")
         alns = tqdm(
             bam.fetch(contig=contig, start=cds_start, stop=cds_end),
             total=num_alignments,
@@ -171,19 +171,12 @@ def main() -> None:
     )
     df_counts, num_singles, num_multiples = count_mutations(df_quality_filter, gene)
 
-    header = "sample_name\tnum_single_mutants\tnum_multiples\n"
     with open(
         output_folder / "mutations/quality_filtered/multiple_mutants.tsv",
-        "r+",
+        "a+",
         encoding="utf-8",
     ) as f:
-        text_list = f.readlines()
-        if text_list != header:
-            text_list.insert(header, 0)
-        sorted_samples = natsorted(text_list[1:])
-        new_text_list = header + sorted_samples
-        new_text = "".join(new_text_list)
-        f.write(new_text)
+        f.write(f"{sample_name}\t{num_singles}\t{num_multiples}\n")
 
     df_counts.to_csv(output_folder / f"counts/{sample_name}_counts.tsv", sep="\t")
     df_counts.to_pickle(output_folder / f"counts/{sample_name}_counts.pkl")

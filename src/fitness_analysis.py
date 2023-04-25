@@ -2,6 +2,8 @@
 """
 Utility functions for doing analyses
 """
+import re
+from typing import Dict
 import warnings
 
 import numpy as np
@@ -56,8 +58,12 @@ def ellipse_coordinates(covariance: np.ndarray) -> tuple[float, float, float]:
 
     Returns
     -------
-    width, height, angle : tuple[int, int, int]
-        Width, height, and angle of the ellipse
+    width : float
+        Width of the ellipse
+    height: float
+        Height of the ellipse
+    angle : float
+        Angle of the ellipse
     """
 
     # convert covariance to principal axes
@@ -71,7 +77,25 @@ def ellipse_coordinates(covariance: np.ndarray) -> tuple[float, float, float]:
     return width, height, angle
 
 
-def get_ellipses(gaussian_model: GaussianMixture, sigma_cutoff):
+def get_ellipses(
+    gaussian_model: GaussianMixture, sigma_cutoff: int
+) -> Dict[int, list[float, float, float, float]]:
+    """
+    Calculate the ellipses to be drawn for each sigma value up to sigma_cutoff using a
+    2-D Gaussian model
+
+    Parameters
+    ----------
+    gaussian_model : GaussianMixture
+        2D Gaussian model
+    sigma_cutoff : int
+        Number of sigma to calculate ellipses for
+
+    Returns
+    -------
+    ellipses : dict
+        Dictionary of sigma values and the corresponding ellipses.
+    """
     ellipses = {}
     for center, covar in zip(gaussian_model.means_, gaussian_model.covariances_):
         # a loop here in case there's more than one for some reason
@@ -84,11 +108,35 @@ def get_ellipses(gaussian_model: GaussianMixture, sigma_cutoff):
             width_sigma,
             height_sigma,
             angle,
-        ]  # pylint: disable=undefined-loop-variable
+        ]
     return ellipses
 
 
-def determine_significance_2d(df_x, df_y, ellipse):
+def determine_significance_2d(
+    df_x: pd.DataFrame, df_y: pd.DataFrame, ellipse: list[float, float, float, float]
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Takes two sets of data and an ellipse and determines the points that lie outside
+    the bounds of significance
+
+    Parameters
+    ----------
+    df_x : pd.DataFrame
+        First dataset
+    df_y : pd.DataFrame
+        Second dataset
+    ellipse : list[float, float, float, float]
+        Center, width, height, and angle of ellipse
+
+    Returns
+    -------
+    df_significant_sensitive : pd.DataFrame
+        Dataframe of boolean values for which positions have significant values for drug
+        sensitivity according to 2D Gaussian model
+    df_significant_sensitive : pd.DataFrame
+        Dataframe of boolean values for which positions have significant values for drug
+        resistance according to 2D Gaussian model
+    """
     center_f, width, height, angle = ellipse
     width_f = width / 2
     height_f = height / 2
@@ -135,23 +183,48 @@ def gaussian_significance_2d(
     df_x: pd.DataFrame,
     df_y: pd.DataFrame,
     sigma_cutoff: int = 4,
-):
+) -> tuple[pd.DataFrame, pd.DataFrame, Dict[int, list[float, float, float, float]]]:
+    """
+    Builds 2D Gaussian model, calculates ellipses for each sigma, and determines the
+    identity of the datapoints that lie outside of the outer ellipse
+
+    Parameters
+    ----------
+    df_x : pd.DataFrame
+        First dataframe
+    df_y : pd.DataFrame
+        Second dataframe
+    sigma_cutoff : int, optional
+        Number of sigma to draw ellipses for, by default 4
+
+    Returns
+    -------
+    df_significant_sensitive : pd.DataFrame
+        Dataframe of boolean values for which positions have significant values for drug
+        sensitivity according to 2D Gaussian model
+    df_significant_sensitive : pd.DataFrame
+        Dataframe of boolean values for which positions have significant values for drug
+        resistance according to 2D Gaussian model
+    ellipses : Dict[int, tuple[float, float, float, float]]
+        Ellipses calculated for determination of significance and drawing for plotting
+    """
     gaussian_model = build_gaussian_model_2d(df_x, df_y)
     ellipses = get_ellipses(gaussian_model, sigma_cutoff=sigma_cutoff)
     significance_ellipse = ellipses[sigma_cutoff]
-    df_sign_sensitive, df_sign_resistant = determine_significance_2d(
+    df_significant_sensitive, df_significant_resistant = determine_significance_2d(
         df_x, df_y, significance_ellipse
     )
-    return df_sign_sensitive, df_sign_resistant, ellipses
+    return df_significant_sensitive, df_significant_resistant, ellipses
 
 
-def significant_sigma_dfs_2d(
+def significance_sigma_dfs_2d(
     data: SequencingData,
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[Dict[str, pd.DataFrame], Dict[str, pd.DataFrame]]:
     """
-    Extracts the significant residue positions from the fitness dataframes
+    Extracts the significant residue positions from the fitness dataframes according
+    to the 2D Gaussian model for significance
 
     Parameters
     ----------
@@ -165,69 +238,88 @@ def significant_sigma_dfs_2d(
 
     Returns
     -------
-    sign_sensitive_dfs, sign_resistant_dfs : tuple[pd.DataFrame, pd.DataFrame]
-        Dataframes of boolean values indicating which cells of the table are
-        relevant mutations for the drug
+    significant_sensitive_dfs : Dict[str, pd.DataFrame]
+        Set of dataframes with boolean values indicating which mutations are relevant for
+        drug sensitivity
+    significant_resistant_dfs : Dict[str, pd.DataFrame]
+        Set of dataframes with boolean values indicating which mutations are relevant for
+        drug sensitivity
     """
     gene = data.gene
-    counts_dict = data.counts
     fitness_dict = data.fitness
     wt_mask = heatmap_masks(gene)
-    sign_sensitive_dfs = {}
-    sign_resistant_dfs = {}
-    dfs_filtered = data.filter_fitness_read_noise(
-        counts_dict, fitness_dict, read_threshold=read_threshold
-    )
-    drugs = set([x.rstrip("1234567890") for x in fitness_dict])
+    significant_sensitive_dfs = {}
+    significant_resistant_dfs = {}
+    dfs_filtered = data.filter_fitness_read_noise(read_threshold=read_threshold)
+    drugs = set(re.sub("_[0-9]", "", x) for x in fitness_dict)
     for drug in drugs:
         x, y = data.get_pairs(drug, data.samples)
         df_x = dfs_filtered[x].mask(wt_mask)
         df_y = dfs_filtered[y].mask(wt_mask)
 
-        sign_sensitive, sign_resistant, _ = gaussian_significance_2d(
+        significant_sensitive, significant_resistant, _ = gaussian_significance_2d(
             df_x,
             df_y,
             sigma_cutoff=sigma_cutoff,
         )
-        sign_sensitive_dfs[drug] = sign_sensitive
-        sign_resistant_dfs[drug] = sign_resistant
-    return sign_sensitive_dfs, sign_resistant_dfs
+        significant_sensitive_dfs[drug] = significant_sensitive
+        significant_resistant_dfs[drug] = significant_resistant
+    return significant_sensitive_dfs, significant_resistant_dfs
 
 
-def significant_sigma_mutations_2d(
+def significance_sigma_mutations_2d(
     data: SequencingData,
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
 ) -> pd.DataFrame:
+    """
+    For replica measurements, build a 2D Gaussian model and generate a dataframe of the
+    list of mutations that are determined to have significant fitness values by the model
+
+    Parameters
+    ----------
+    data : SequencingData
+        Data from experiment sequencing with count-, enrichment-, and fitness-values
+    read_threshold : int, optional
+        Minimum number of reads for fitness value to be considered valid, by default 20
+    sigma_cutoff : int, optional
+        Number of sigma to draw ellipses for, by default 4
+
+    Returns
+    -------
+    df_all_fitness_sigma : pd.DataFrame
+        Table for significance of all mutations according to the 2D Gaussian model
+    """
     gene = data.gene
-    counts_dict = data.counts
     fitness_dict = data.fitness
     cds_translation = gene.cds_translation
-    drugs_all = sorted([drug for drug in data.treatments if "UT" not in drug])
-    sign_sensitive_dfs, sign_resistant_dfs = significant_sigma_dfs_2d(
+    drugs_all = sorted(drug for drug in data.treatments if "UT" not in drug)
+    significant_sensitive_dfs, significant_resistant_dfs = significance_sigma_dfs_2d(
         data,
         read_threshold=read_threshold,
         sigma_cutoff=sigma_cutoff,
     )
 
-    sample_name = list(counts_dict)[0]
+    sample_name = list(fitness_dict)[0]
+    # * get a list of all possible position-residue mutations
     point_mutations = pd.MultiIndex.from_product(
         [fitness_dict[sample_name].index, fitness_dict[sample_name].columns]
     ).values
     list_all_fitness = []
+
     for drug in drugs_all:
         replica_one, replica_two = data.get_pairs(drug, fitness_dict)
-        df1 = fitness_dict[replica_one]
-        df2 = fitness_dict[replica_two]
+        df1 = data.filter_fitness_read_noise(read_threshold)[replica_one]
+        df2 = data.filter_fitness_read_noise(read_threshold)[replica_two]
 
-        sign_sensitive = sign_sensitive_dfs[drug]
-        sign_resistant = sign_resistant_dfs[drug]
+        significant_sensitive = significant_sensitive_dfs[drug]
+        significant_resistant = significant_resistant_dfs[drug]
 
-        for position, residue in point_mutations:  # pylint: disable=not-an-iterable
+        for position, residue in list(point_mutations):
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore")
                 fitness_entry = {
-                    "aa_pos": position,
+                    "aa_pos": position + 1,
                     "ref_aa": cds_translation[position],
                     "query_aa": residue,
                     "drug": drug,
@@ -237,18 +329,26 @@ def significant_sigma_mutations_2d(
                         [df1.loc[position, residue], df2.loc[position, residue]]
                     ),
                     "significant": (
-                        sign_sensitive.loc[position, residue]
-                        | sign_resistant.loc[position, residue]
+                        significant_sensitive.loc[position, residue]
+                        | significant_resistant.loc[position, residue]
                     ),
                 }
             if fitness_entry["significant"]:
-                if sign_sensitive.loc[position, residue]:
+                if significant_sensitive.loc[position, residue]:
                     fitness_entry.update({"type": "sensitive"})
-                elif sign_resistant.loc[position, residue]:
+                elif significant_resistant.loc[position, residue]:
                     fitness_entry.update({"type": "resistance"})
             list_all_fitness.append(fitness_entry)
 
     df_all_fitness_sigma = pd.DataFrame(list_all_fitness)
+    rel_fitness_1 = df_all_fitness_sigma["rel_fitness_1"]
+    rel_fitness_2 = df_all_fitness_sigma["rel_fitness_2"]
+    # make sure both replicates meet noise threshold requirements
+    # drop any position where one value is NaN
+    below_read_threshold_index = (
+        rel_fitness_1.where(np.isfinite(rel_fitness_1) & np.isfinite(rel_fitness_2)).dropna().index
+    )
+    df_all_fitness_sigma = df_all_fitness_sigma.loc[below_read_threshold_index]
     return df_all_fitness_sigma
 
 
@@ -267,8 +367,10 @@ def build_gaussian_model_1d(df: pd.DataFrame) -> tuple[float, float]:
 
     Returns
     -------
-    mu, std : tuple[float, float]
-        Mean and standard deviation for 1-D Gaussian model
+    mu : float
+        Mean for 1D Gaussian model
+    std : float
+        Standard deviation for 1-D Gaussian model
     """
 
     # * 1-D gaussian model fitting for all mutations
@@ -285,9 +387,33 @@ def build_gaussian_model_1d(df: pd.DataFrame) -> tuple[float, float]:
     return mu, std
 
 
-def determine_significance_1d(
-    df: pd.DataFrame, mu: float, std: float, sigma_cutoff: int = 5
+def gaussian_significance_1d(
+    df: pd.DataFrame, sigma_cutoff: int = 4
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Uses mean and standard deviation to determine the 1D Gaussian model and determine
+    the significance of the relative fitness values for each mutation
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Relative fitness data for drug
+    sigma_cutoff : int, optional
+        Number of sigma to use to calculate significance, by default 4
+
+    Returns
+    -------
+    df_significant_sensitive : pd.DataFrame
+        Dataframe of boolean values for which positions have significant values for drug
+        sensitivity according to 1D Gaussian model
+    df_significant_resistant : pd.DataFrame
+        Dataframe of boolean values for which positions have significant values for drug
+        resistance according to 1D Gaussian model
+    """
+
+    mu, std = build_gaussian_model_1d(df)
+
+    # determine significance in 1D
     def is_significant(value):
         if np.isnan(value).any():
             return False
@@ -310,3 +436,117 @@ def determine_significance_1d(
     df_significant_resistant = df.applymap(is_significant_resistant)
 
     return df_significant_sensitive, df_significant_resistant
+
+
+def significance_sigma_dfs_1d(
+    data: SequencingData, read_threshold: int = 20, sigma_cutoff: int = 4
+) -> tuple[Dict[str, pd.DataFrame], Dict[str, pd.DataFrame]]:
+    """
+    Extracts the significant residue positions from the fitness dataframes according
+    to the 1D Gaussian model for significance
+
+    Parameters
+    ----------
+    data : SequencingData
+        Data from experiment sequencing with count-, enrichment-, and fitness-values
+    read_threshold : int, optional
+        Minimum number of reads required to be included, by default 20
+    sigma_cutoff : int, optional
+        How many sigmas away from the synonymous mutation values to use as the
+        cutoff for significance, by default 4
+
+    Returns
+    -------
+    significant_sensitive_dfs : Dict[str, pd.DataFrame]
+        Set of dataframes with boolean values indicating which mutations are relevant for
+        drug sensitivity
+    significant_resistant_dfs : Dict[str, pd.DataFrame]
+        Set of dataframes with boolean values indicating which mutations are relevant for
+        drug sensitivity
+    """
+    gene = data.gene
+    fitness_dict = data.fitness
+    wt_mask = heatmap_masks(gene)
+    significant_sensitive_dfs = {}
+    significant_resistant_dfs = {}
+    dfs_filtered = data.filter_fitness_read_noise(read_threshold=read_threshold)
+    drugs = set(re.sub("_[0-9]", "", x) for x in fitness_dict)
+    for drug in drugs:
+        df = dfs_filtered[drug].mask(wt_mask)
+
+        significant_sensitive, significant_resistant = gaussian_significance_1d(
+            df, sigma_cutoff=sigma_cutoff
+        )
+        significant_sensitive_dfs[drug] = significant_sensitive
+        significant_resistant_dfs[drug] = significant_resistant
+    return significant_sensitive_dfs, significant_resistant_dfs
+
+
+def significance_sigma_mutations_1d(
+    data: SequencingData,
+    read_threshold: int = 20,
+    sigma_cutoff: int = 4,
+) -> pd.DataFrame:
+    """
+    For pooled measurements, build a 1D Gaussian model and generate a dataframe of the
+    list of mutations that are determined to have significant fitness values by the model
+
+    Parameters
+    ----------
+    data : SequencingData
+        Data from experiment sequencing with count-, enrichment-, and fitness-values
+    read_threshold : int, optional
+        Minimum number of reads for fitness value to be considered valid, by default 20
+    sigma_cutoff : int, optional
+        Number of sigma to draw ellipses for, by default 4
+
+    Returns
+    -------
+    df_all_fitness_sigma : pd.DataFrame
+        Table for significance of all mutations according to the 1D Gaussian model
+    """
+    gene = data.gene
+    fitness_dict = data.fitness
+    cds_translation = gene.cds_translation
+    drugs_all = sorted(drug for drug in data.treatments if "UT" not in drug)
+    significant_sensitive_dfs, significant_resistant_dfs = significance_sigma_dfs_1d(
+        data,
+        read_threshold=read_threshold,
+        sigma_cutoff=sigma_cutoff,
+    )
+
+    sample_name = list(fitness_dict)[0]
+    # * get a list of all possible position-residue mutations
+    point_mutations = pd.MultiIndex.from_product(
+        [fitness_dict[sample_name].index, fitness_dict[sample_name].columns]
+    ).values
+    list_all_fitness = []
+
+    for drug in drugs_all:
+        df = fitness_dict[drug]
+
+        significant_sensitive = significant_sensitive_dfs[drug]
+        significant_resistant = significant_resistant_dfs[drug]
+
+        for position, residue in list(point_mutations):
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                fitness_entry = {
+                    "aa_pos": position + 1,
+                    "ref_aa": cds_translation[position],
+                    "query_aa": residue,
+                    "drug": drug,
+                    "rel_fitness": df.loc[position, residue],
+                    "significant": (
+                        significant_sensitive.loc[position, residue]
+                        | significant_resistant.loc[position, residue]
+                    ),
+                }
+                if significant_sensitive.loc[position, residue]:
+                    fitness_entry.update({"type": "sensitive"})
+                elif significant_resistant.loc[position, residue]:
+                    fitness_entry.update({"type": "resistance"})
+                list_all_fitness.append(fitness_entry)
+
+    df_all_fitness_sigma = pd.DataFrame(list_all_fitness)
+    return df_all_fitness_sigma

@@ -3,6 +3,7 @@
 Utils functions for counting mutation data from alignment files
 """
 import time
+from typing import List
 
 from Bio.Data import CodonTable, IUPACData
 import numpy as np
@@ -19,7 +20,7 @@ def get_time() -> str:
     """
     return f"""[{time.strftime("%H:%M:%S")}]"""
 
-def mutation_finder(alignments, gene: Gene) -> list:
+def mutation_finder(alignments, gene: Gene) -> list[str, int, str, int, str, str, str, int]:
     """
     Find all mutations present in all alignments using Gene as reference
 
@@ -32,8 +33,11 @@ def mutation_finder(alignments, gene: Gene) -> list:
 
     Returns
     -------
-    mutations : list
-        All mutations found in alignments
+    mutations : list[str, int, str, int, str, str, str, int]
+        All mutations found in alignments with data for read_id, nucleotide position in
+        reference, reference nucleotide, nucleotide position in query sequence,
+        query nucleotide, query base quality, full query sequence, and number of nucleotides
+        overlapping the CDS region of the gene
     """
     cds_start = gene.cds.location.start
     cds_end = gene.cds.location.end
@@ -78,15 +82,15 @@ def mutation_finder(alignments, gene: Gene) -> list:
     return mutations
 
 
-def read_mutations(mutations: list, gene: Gene) -> pd.DataFrame:
+def read_mutations(mutations: List[tuple[str, int, str, int, str, str, str, int]], gene: Gene) -> pd.DataFrame:
     """
     Take list of nucleotide mutations found and determine query/reference codons,
     amino acids, reference positions, etc.
 
     Parameters
     ----------
-    mutations : list
-        Nucleotide retrieved from alignment files
+    mutations : List[tuple[str, int, str, int, str, str, str, int]]
+        List of mutation records
     gene : Gene
         Gene with wild-type sequences
 
@@ -175,7 +179,10 @@ def find_multiple_mutants(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]
 
     Returns
     -------
-    df_multiples, df_singles : tuple[pd.DataFrame, pd.DataFrame]
+    df_multiples : pd.DataFrame
+        Dataframe containing mutations found in read_ids with multiple amino acid mutations
+    df_singles : pd.DataFrame
+        Dataframe containing mutations found in read_ids with only one amino acid mutation
     """
     df_multiples = df[df.duplicated("read_id", keep=False)]
     df_singles = df.drop_duplicates("read_id", keep=False)
@@ -197,12 +204,15 @@ def count_mutations(df: pd.DataFrame, gene: Gene) -> tuple[pd.DataFrame, int, in
 
     Returns
     -------
-    df_counts, num_singles, num_mutants : tuple[pd.DataFrame, int, int]
-        DataFrame with count values for each mutation as well as the number of single
-        mutants and the number of multiple mutants
+    df_counts : pd.DataFrame
+        Dataframe with count values for each mutation
+    num_singles : int
+        Number of single mutants
+    num_mutants : int
+        Number of multiple mutants
     """
     # * filter redundant mutations (when all mutated bases are in same codon)
-    # TODO: change to group the multiple mutations into one rdecord instead of straight dropping
+    # TODO: change to group the multiple mutations into one record instead of straight dropping
     df = df.drop_duplicates(["read_id", "aa_pos"])
 
     df_multiples, df_singles = find_multiple_mutants(df)

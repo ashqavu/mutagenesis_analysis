@@ -1,10 +1,9 @@
-import re
-
 import numpy as np
 import pandas as pd
 from Bio.Data import IUPACData
 
 from plasmid_map import Gene
+
 
 def heatmap_table(gene: Gene) -> pd.DataFrame:
     """

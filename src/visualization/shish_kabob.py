@@ -6,13 +6,17 @@ Plot shish-kabob plots for significant mutations found in mutagenesis studies
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import seaborn as sns
 from matplotlib.patches import Rectangle
 
-from fitness_analysis import significant_sigma_dfs_2d
+from fitness_analysis import (
+    significance_sigma_dfs_1d,
+)
 from sequencing_data import SequencingData
+from visualization.gaussians import gaussian_drug_2d, gaussian_drug_1d
+from visualization.histograms import histogram_fitness_wrapper
 from utils.seq_data_utils import heatmap_masks
-from visualization.gaussians import gaussian_drug_2d
 
 
 def shish_kabob_drug(
@@ -21,12 +25,12 @@ def shish_kabob_drug(
     data: SequencingData,
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
-    ax: matplotlib.axes = None,
+    ax: matplotlib.axes.Axes = None,
     orientation: str = "horizontal",
     vmin: float = -1.5,
     vmax: float = 1.5,
     cbar: bool = False,
-) -> matplotlib.axes:
+) -> matplotlib.axes.Axes:
     """
     drug : str
         Name of drug to plot
@@ -37,7 +41,7 @@ def shish_kabob_drug(
     sigma_cutoff : int, optional
         How many sigmas away from the synonymous mutation values to use as the
         cutoff for significance, by default 4
-    ax : matplotlib.axes, optional
+    ax : matplotlib.axes.Axes, optional
         Axes to draw the plot on, by default None
     orientation : str, optional
         Whether to draw plot vertically or horizontally, by default "horizontal"
@@ -50,51 +54,69 @@ def shish_kabob_drug(
 
     Returns
     -------
-    ax : matplotlib.axes
+    ax : matplotlib.axes.Axes
     """
-    fitness_dict = data.fitness
-    counts_dict = data.counts
     gene = data.gene
-    wt_mask = heatmap_masks(gene)
-
     if ax is None:
         ax = plt.gca()
 
-    dfs_filtered = data.filter_fitness_read_noise(
-        counts_dict, fitness_dict, read_threshold=read_threshold
-    )
-    
+    dfs_filtered = data.filter_fitness_read_noise(read_threshold=read_threshold)
+    df = dfs_filtered[drug]
     if gaussian == "2D":
-        replica_one, replica_two = data.get_pairs(drug, data.samples)
-        df1 = dfs_filtered[replica_one]
-        df2 = dfs_filtered[replica_two]
-        df1 = df1.mask(wt_mask)
-        df2 = df2.mask(wt_mask)
-
-        sign_sensitive, sign_resistant, _ = gaussian_significance_2d(
-            df1,
-            df2,
-            sigma_cutoff=sigma_cutoff,
-        )
+        pass
+        # df_all_fitness_sigma = significance_sigma_mutations_2d(
+        #     data, read_threshold=read_threshold, sigma_cutoff=sigma_cutoff
+        # )
 
         # * get residue positions with significant mutations
-        sign_positions = (
-            sign_sensitive.drop("*", axis=1) | sign_resistant.drop("*", axis=1)
-        ).sum(axis=1) > 0
-        sign_positions = sign_positions[sign_positions].index
+        # df_all_significant = df_all_fitness_sigma.query("significant == True")
         # * find fitness value of greatest magnitude between pair
-        df = df1[df1.abs().ge(df2.abs())]
-        df.update(df2[df2.abs().ge(df1.abs())])
-        # * select only mutations with significant fitness values
-        df_masked = df.where(sign_resistant | sign_sensitive)
-        df_masked = df_masked.drop("∅", axis=1)
-    
+
+        # replica_one, replica_two = data.get_pairs(drug, data.samples)
+        # df1 = dfs_filtered[replica_one]
+        # df2 = dfs_filtered[replica_two]
+        # df1 = df1.mask(wt_mask)
+        # df2 = df2.mask(wt_mask)
+
+        # significant_sensitive, significant_resistant, _ = gaussian_significance_2d(
+        #     df1,
+        #     df2,
+        #     sigma_cutoff=sigma_cutoff,
+        # )
+
+        # * get residue positions with significant mutations
+        # significant_positions = (
+        #     significant_sensitive.drop("*", axis=1) | significant_resistant.drop("*", axis=1)
+        # ).sum(axis=1) > 0
+        # significant_positions = significant_positions[significant_positions].index
+        # * find fitness value of greatest magnitude between pair
+        # df = df1[df1.abs().ge(df2.abs())]
+        # df.update(df2[df2.abs().ge(df1.abs())])
+
     elif gaussian == "1D":
-        sign_sensitive, sign_resistant = 
+        (
+            significant_sensitive_dfs,
+            significant_resistant_dfs,
+        ) = significance_sigma_dfs_1d(
+            data, read_threshold=read_threshold, sigma_cutoff=sigma_cutoff
+        )
+
+        significant_sensitive = significant_sensitive_dfs[drug]
+        significant_resistant = significant_resistant_dfs[drug]
+
+        # * get residue positions with significant mutations
+        significant_positions = (
+            significant_sensitive.drop("*", axis=1)
+            | significant_resistant.drop("*", axis=1)
+        ).sum(axis=1) > 0
+        significant_positions = significant_positions[significant_positions].index
+    # * select only mutations with significant fitness values
+    df_masked = df.where(significant_resistant | significant_sensitive)
+    df_masked = df_masked.drop("∅", axis=1)
 
     with sns.axes_style("white"):
         if orientation == "vertical":
-            df_masked_plot = df_masked.loc[sign_positions]
+            df_masked_plot = df_masked.loc[significant_positions]
 
             sns.heatmap(
                 df_masked_plot,
@@ -104,11 +126,12 @@ def shish_kabob_drug(
                 cbar=cbar,
                 square=True,
                 ax=ax,
+                zorder=100,
             )
             ax.yaxis.grid("on")
             ax.set_yticks(
-                np.arange(len(sign_positions)) + 0.5,
-                np.array(sign_positions),
+                np.arange(len(significant_positions)) + 0.5,
+                np.array(significant_positions) + 1,
                 rotation=0,
                 ha="center",
                 fontsize="xx-small",
@@ -116,13 +139,22 @@ def shish_kabob_drug(
             ax.set_xticks([])
             # * add wild-type notations
             # get reference residues
-            ref_aas = np.take(gene.cds_translation, sign_positions)
+            ref_aas = np.take(gene.cds_translation, significant_positions)
             # iterate over amino acid options (y-axis)
             for y, residue in enumerate(ref_aas):
                 # determine x position for text box
                 x = df_masked_plot.columns.get_loc(residue)
                 ax.add_patch(
-                    Rectangle((x, y), 1, 1, ec="black", fc="white", fill=True, lw=0.2)
+                    Rectangle(
+                        (x, y),
+                        1,
+                        1,
+                        ec="black",
+                        fc="white",
+                        fill=True,
+                        lw=0.2,
+                        zorder=100,
+                    )
                 )
                 ax.text(
                     x + 0.5,
@@ -131,6 +163,7 @@ def shish_kabob_drug(
                     fontsize="xx-small",
                     ha="center",
                     va="center",
+                    zorder=101,
                 )
             # * annotate fitness boxes
             # iterate over the x-axis (positions)
@@ -147,35 +180,37 @@ def shish_kabob_drug(
                         ha="center",
                         va="center",
                         color="white",
+                        zorder=101,
                     )
             ax.set_title(drug, fontweight="heavy")
             ax.set_anchor("N")
 
         elif orientation == "horizontal":
             df_masked = df_masked.T
-            df_masked_plot = df_masked[sign_positions]
+            df_masked_plot = df_masked[significant_positions]
 
             sns.heatmap(
                 df_masked_plot,
-                cmap="coolwarm",
+                cmap="vlag",
                 vmin=vmin,
                 vmax=vmax,
                 cbar=cbar,
                 square=True,
                 ax=ax,
+                zorder=100,
             )
             ax.xaxis.grid("on")
             ax.set_xticks(
-                np.arange(len(sign_positions)) + 0.5,
-                np.array(sign_positions),
+                np.arange(len(significant_positions)) + 0.5,
+                np.array(significant_positions) + 1,
                 rotation=90,
                 ha="center",
                 fontsize="xx-small",
             )
             ax.set_yticks([])
-            # * annotate fitness boxes
+            # * add wild-type notations
             # get reference residues
-            ref_aas = np.take(gene.cds_translation, sign_positions)
+            ref_aas = np.take(gene.cds_translation, significant_positions)
             # iterate in the x-direction (significant positions)
             for x, residue in enumerate(ref_aas):
                 # determine y-coord for text box
@@ -189,7 +224,7 @@ def shish_kabob_drug(
                         fc="white",
                         fill=True,
                         lw=0.2,
-                        clip_on=False,
+                        zorder=100,
                     )
                 )
                 ax.text(
@@ -199,8 +234,9 @@ def shish_kabob_drug(
                     fontsize="xx-small",
                     ha="center",
                     va="center",
+                    zorder=101,
                 )
-            for x, pos in enumerate(sign_positions):
+            for x, pos in enumerate(significant_positions):
                 aa_indices = np.argwhere(df_masked_plot[pos].notnull().values)
                 for y in aa_indices:
                     aa = df_masked_plot.index[y].values[0]
@@ -212,13 +248,16 @@ def shish_kabob_drug(
                         ha="center",
                         va="center",
                         color="white",
+                        zorder=101,
                     )
             ax.set_ylabel(drug, fontweight="heavy")
+        ax.tick_params(bottom=False, left=False, pad=1)
         return ax
 
 
 def shish_kabob_draw(
     data: SequencingData,
+    gaussian: str,
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
     orientation: str = "horizontal",
@@ -226,7 +265,7 @@ def shish_kabob_draw(
     vmax: float = 1.5,
     xlim: tuple[float, float] = (-2.5, 2.5),
     ylim: tuple[float, float] = (-2.5, 2.5),
-) -> matplotlib.axes:
+) -> matplotlib.axes.Axes:
     """
     Draw shish kabob plots and corresponding gaussian scatter plots for all
     samples in dataset
@@ -235,6 +274,8 @@ def shish_kabob_draw(
     ----------
     data : SequencingData
         Data from experiment sequencing with count-, enrichment-, and fitness-values
+    gaussian : str
+        "nD" dimensions to use for Gaussian significance
     read_threshold : int, optional
         Minimum number of reads required to be included, by default 20
     sigma_cutoff : int, optional
@@ -253,7 +294,7 @@ def shish_kabob_draw(
     """
 
     # * determine shape of subplots
-    drugs_all = sorted([drug for drug in data.treatments if "UT" not in drug])
+    drugs_all = sorted(drug for drug in data.treatments if "UT" not in drug)
     gridspec_dict = {"wspace": 0, "hspace": 0}
     if orientation == "horizontal":
         num_rows, num_cols = len(drugs_all), 2
@@ -300,25 +341,58 @@ def shish_kabob_draw(
             if sigma_cutoff <= 3:
                 ax_shish.tick_params(labelsize=4, pad=0)
 
-            gaussian_drug_2d(
-                drug,
-                data,
-                read_threshold=read_threshold,
-                sigma_cutoff=sigma_cutoff,
-                ax=ax_gauss,
-                xlim=xlim,
-                ylim=ylim,
-            )
+            if gaussian == "2D":
+                pass
+                gaussian_drug_2d(
+                    drug,
+                    data,
+                    read_threshold=read_threshold,
+                    sigma_cutoff=sigma_cutoff,
+                    ax=ax_gauss,
+                    xlim=xlim,
+                    ylim=ylim,
+                )
 
-            shish_kabob_drug(
-                drug,
-                data,
-                read_threshold=read_threshold,
-                sigma_cutoff=sigma_cutoff,
-                ax=ax_shish,
-                orientation=orientation,
-                vmin=vmin,
-                vmax=vmax,
-            )
+                shish_kabob_drug(
+                    drug,
+                    "2D",
+                    data,
+                    read_threshold=read_threshold,
+                    sigma_cutoff=sigma_cutoff,
+                    ax=ax_shish,
+                    orientation=orientation,
+                    vmin=vmin,
+                    vmax=vmax,
+                )
+            elif gaussian == "1D":
+                wt_mask = heatmap_masks(data.gene)
+                # get bins for histogram
+                df = data.filter_fitness_read_noise(read_threshold=read_threshold)[drug]
+                df = df.mask(wt_mask)
+                df.name = drug
+                values_fitness = df.values
+                bins = np.linspace(
+                    np.nanmin(values_fitness), np.nanmax(values_fitness), 25
+                )
+                histogram_fitness_wrapper(df, bins=bins, ax=ax_gauss)
+                gaussian_drug_1d(df, ax_gauss, sigma_cutoff=sigma_cutoff)
+                ax_gauss.get_legend().remove()
+
+                shish_kabob_drug(
+                    drug,
+                    "1D",
+                    data,
+                    read_threshold=read_threshold,
+                    sigma_cutoff=sigma_cutoff,
+                    ax=ax_shish,
+                    orientation=orientation,
+                    vmin=vmin,
+                    vmax=vmax,
+                )
+        if gaussian == "1D":
+            adjusted_height = ax_shish.get_tightbbox().transformed(
+                fig.dpi_scale_trans.inverted()
+            ).height * (i + 1)
+            fig.set_figheight(adjusted_height)
 
     return fig

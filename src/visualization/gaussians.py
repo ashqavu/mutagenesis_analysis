@@ -6,10 +6,11 @@ Determine and plot Gaussian significance models for drugs used in mutagenesis st
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import seaborn as sns
 from matplotlib.patches import Ellipse
 
-from fitness_analysis import gaussian_significance_2d
+from fitness_analysis import gaussian_significance_2d, build_gaussian_model_1d
 from sequencing_data import SequencingData
 from utils.seq_data_utils import heatmap_masks
 
@@ -19,27 +20,26 @@ def gaussian_drug_2d(
     data: SequencingData,
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
-    ax: matplotlib.axes = None,
+    ax: matplotlib.axes.Axes = None,
     xlim: tuple[float, float] = (-2.5, 2.5),
     ylim: tuple[float, float] = (-2.5, 2.5),
-) -> matplotlib.axes:
-    counts_dict = data.counts
-    fitness_dict = data.fitness
+) -> matplotlib.axes.Axes:
     gene = data.gene
     wt_mask = heatmap_masks(gene)
 
     x, y = data.get_pairs(drug, data.samples)
     dfs_filtered = data.filter_fitness_read_noise(
-        counts_dict, fitness_dict, read_threshold=read_threshold
+        read_threshold=read_threshold
     )
     df_x = dfs_filtered[x]
     df_y = dfs_filtered[y]
     df_x = df_x.mask(wt_mask)
     df_y = df_y.mask(wt_mask)
-    df_x = df_x.loc[23:285]
-    df_y = df_y.loc[23:285]
+    # ! change this for TEM-1
+    # df_x = df_x.loc[23:285]
+    # df_y = df_y.loc[23:285]
 
-    sign_sensitive, sign_resistant, ellipses_all = gaussian_significance_2d(
+    significant_sensitive, significant_resistant, ellipses_all = gaussian_significance_2d(
         df_x,
         df_y,
         sigma_cutoff=sigma_cutoff,
@@ -92,8 +92,8 @@ def gaussian_drug_2d(
     )
     # resistant mutations
     sns.scatterplot(
-        x=df_x[sign_resistant].values.flatten(),
-        y=df_y[sign_resistant].values.flatten(),
+        x=df_x[significant_resistant].values.flatten(),
+        y=df_y[significant_resistant].values.flatten(),
         ax=ax,
         plotnonfinite=False,
         color="lightcoral",
@@ -102,8 +102,8 @@ def gaussian_drug_2d(
     )
     # sensitive mutations
     sns.scatterplot(
-        x=df_x[sign_sensitive].values.flatten(),
-        y=df_y[sign_sensitive].values.flatten(),
+        x=df_x[significant_sensitive].values.flatten(),
+        y=df_y[significant_sensitive].values.flatten(),
         ax=ax,
         plotnonfinite=False,
         color="dodgerblue",
@@ -131,7 +131,7 @@ def gaussian_replica_pair_draw_2d(
     sigma_cutoff: int = 4,
     xlim: tuple[float, float] = (-2.5, 2.5),
     ylim: tuple[float, float] = (-2.5, 2.5),
-) -> matplotlib.figure:
+) -> matplotlib.figure.Figure:
     """
     Draws the full figure of gaussian significance scatterplots for all drugs
     in experiment. All treated-untreated pairs must be present in the
@@ -156,7 +156,7 @@ def gaussian_replica_pair_draw_2d(
     matplotlib.figure
     """
     # * determine shape of subplots
-    drugs_all = sorted([drug for drug in data.treatments if "UT" not in drug])
+    drugs_all = sorted(drug for drug in data.treatments if "UT" not in drug)
     num_plots = len(drugs_all)
     rows = cols = np.sqrt(num_plots)
     if not rows.is_integer():
@@ -188,3 +188,36 @@ def gaussian_replica_pair_draw_2d(
         fontsize="x-large",
     )
     return fig
+
+
+def gaussian_drug_1d(
+    df: pd.DataFrame,
+    ax: matplotlib.axes.Axes,
+    sigma_cutoff: int = 4,
+) -> matplotlib.axes.Axes:
+    """
+    Add boundaries to indicate significance boundaries according to sigma cutoff value
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Data from histogram
+    ax : matplotlib.axes.Axes
+        Axes that histogram is plotted on
+    sigma_cutoff : int, optional
+        Number of sigma to use to calculate significance, by default 4
+
+    Returns
+    -------
+    ax : matplotlib.axes.Axes
+        New Axes with significance boundaries drawn on
+    """
+    mu, std = build_gaussian_model_1d(df)
+    left_bound = mu - (sigma_cutoff * std)
+    right_bound = mu + (sigma_cutoff * std)
+    ax.axvline(left_bound, label=f"-{sigma_cutoff}$\sigma$", linestyle="dashed", color="blue", zorder=100)
+    ax.axvline(right_bound, label=f"+{sigma_cutoff}$\sigma$", linestyle="dashed", color="red", zorder=100)
+    ax.set_xlabel("")
+    ax.legend()
+    
+    return ax

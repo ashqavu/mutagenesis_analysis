@@ -29,14 +29,14 @@ def respine(ax: matplotlib.axes) -> None:
 
 
 def relabel_axis(
-    fig: matplotlib.figure, gene: Gene, orientation: str = "horizontal"
+    fig: matplotlib.figure.Figure, gene: Gene, orientation: str = "horizontal"
 ) -> None:
     """
     Here we relabel the position-axis of the heatmap figure to use the Ambler numbering system.
 
     Parameters
     ----------
-    fig : matplotlib.figure
+    fig : matplotlib.figure.Figure
         Parent figure of all the heatmap axes
     gene : Gene
         Gene object that holds a numbering system attribute

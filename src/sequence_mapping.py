@@ -12,10 +12,10 @@ from pathlib import Path
 
 import pysam
 from tqdm import tqdm
-from natsort import natsorted
 
 from plasmid_map import Gene
-from utils.seq_mapping_utils import get_time, mutation_finder, read_mutations, count_mutations
+from utils.seq_mapping_utils import (count_mutations, get_time,
+                                     mutation_finder, read_mutations)
 
 
 def parse_args():
@@ -94,21 +94,23 @@ def main() -> None:
     start_time = time.time()
 
     print(f"{get_time()} Finding mutations for {sample_name}...")
-    with pysam.AlignmentFile(input_file, "rb", threads=os.cpu_count()) as bam: # pylint: disable=no-member
+    with pysam.AlignmentFile( # pylint: disable=no-member
+        input_file, "rb", threads=os.cpu_count()
+    ) as bam:  # pylint: disable=no-member
         if args.contig:
             contig = args.contig
         else:
             contig = bam.header.references[0]
         num_alignments = int(
-            pysam.view( # pylint: disable=no-member
+            pysam.view(  # pylint: disable=no-member
                 # restrict search to gene region
-                "-c", input_file.as_posix(), f"{contig}:{cds_start+1}-{cds_end}"
+                "-c",
+                input_file.as_posix(),
+                f"{contig}:{cds_start+1}-{cds_end}",
             ).strip()
         )
         with open(
-            input_folder / "alignments/total_reads.tsv",
-            "a",
-            encoding="utf-8"
+            input_folder / "alignments/total_reads.tsv", "a", encoding="utf-8"
         ) as f:
             f.write(f"{sample_name}\t{num_alignments}\n")
         alns = tqdm(
@@ -147,7 +149,7 @@ def main() -> None:
     print(f"{get_time()} Calculating lengths of mapped query sequences...")
     df_read_lengths = (
         df_quality_filter[["read_id", "query_seq"]]
-        .drop_duplicates("read_id")
+        .drop_duplicates("read_id", keep="first")
         .set_index("read_id")["query_seq"]
         .transform(len)
     )

@@ -9,9 +9,8 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.offsetbox import AnchoredText
-from scipy.stats import norm
 
-from fitness_analysis import build_gaussian_model_1d, determine_significance_1d
+from fitness_analysis import build_gaussian_model_1d
 from sequencing_data import SequencingData
 from utils.seq_data_utils import (
     heatmap_masks,
@@ -20,7 +19,7 @@ from utils.seq_data_utils import (
 
 def histogram_mutation_counts(  # pylint: disable=too-many-locals
     data: SequencingData, read_threshold: int = 20
-) -> matplotlib.figure:
+) -> matplotlib.figure.Figure:
     """
     Generate Figure of histograms plotting distribution of number of counts
     found per amino acid mutation
@@ -34,13 +33,11 @@ def histogram_mutation_counts(  # pylint: disable=too-many-locals
 
     Returns
     -------
-    fig : matplotlib.figure
+    fig : matplotlib.figure.Figure
         Figure with each sample plotted on a different Subplot
     """
     counts = data.counts
     wt_mask = heatmap_masks(data.gene)
-    # num_plots = len(counts)
-    # height = num_plots * 1.8
     samples = list(sorted(data.samples))
     num_subplots = len(samples)
     num_rows = num_columns = int(np.round(np.sqrt(num_subplots)))
@@ -62,8 +59,9 @@ def histogram_mutation_counts(  # pylint: disable=too-many-locals
         counts_values = counts[sample].mask(wt_mask)
         # ! these indices are specific to the mature TEM-1 protein
         # ! would need to be changed if you used a different gene
+        # * drop final stop codon
         # counts_values = data.counts[sample].loc[23:285].drop(["*", "∅"], axis=1)
-        counts_values = data.counts[sample][:-1].drop(["*", "∅"], axis=1)
+        counts_values = data.counts[sample][:-1].drop(["*", "∅"], axis=1) # exclude the stop codon at the end
         library_size = counts_values.shape[0] * (counts_values.shape[1] - 1)
         num_missing = counts_values.lt(read_threshold).sum().sum()
         pct_missing = num_missing / library_size
@@ -84,16 +82,15 @@ def histogram_mutation_counts(  # pylint: disable=too-many-locals
         )
 
         ax.set_ylabel("")
-        # ax.set_xlabel("counts per amino acid mutation\n($log_{10}(x+1)$)", fontsize=7)
 
         ax.spines.top.set_visible(False)
         ax.spines.right.set_visible(False)
-        ax.tick_params(direction="in", labelsize=7)
+        ax.tick_params(direction="in", labelsize="medium")
         ax.set_title(sample, fontsize=12, fontweight="bold")
 
         text_mean = f"below threshold (min. {read_threshold}): {num_missing} ({pct_missing:.2%})\nmean of all: {round(mean, 3)}"
         annot_box = AnchoredText(
-            text_mean, loc="upper right", pad=0.8, prop=dict(size="large"), frameon=True
+            text_mean, loc="upper right", pad=0.8, prop=dict(size="medium"), frameon=True
         )
         ax.add_artist(annot_box)
     fig.supylabel("num of amino acid mutations", fontsize="large")
@@ -102,7 +99,7 @@ def histogram_mutation_counts(  # pylint: disable=too-many-locals
 
 
 def histogram_fitness_wrapper(
-    df_fitness: pd.DataFrame, bins: list, ax: matplotlib.axes = None
+    df_fitness: pd.DataFrame, bins: list, ax: matplotlib.axes.Axes = None
 ) -> None:
     """
     Styler for individual histogram plotting fitness values. Gray bars show
@@ -142,7 +139,7 @@ def histogram_fitness_wrapper(
         color="gray",
         ec="white",
         alpha=0.6,
-        label="all",
+        label="all mutations",
         zorder=98
     )
     # sns.histplot(
@@ -162,7 +159,7 @@ def histogram_fitness_wrapper(
         color="greenyellow",
         ec="white",
         alpha=0.6,
-        label="synonymous",
+        label="synonymous mutations",
         zorder=101,
     )
     sns.histplot(
@@ -176,16 +173,8 @@ def histogram_fitness_wrapper(
         label="stop mutations",
         zorder=101,
     )
-    # sns.histplot(
-    #     values_extinct,
-    #     bins=bins,
-    #     ax=ax,
-    #     color="steelblue",
-    #     ec="white",
-    #     alpha=0.6,
-    #     label="extinct",
-    #     zorder=100,
-    # )
+
+    ax.tick_params(labelsize="medium")
 
     ax.set_title(sample, fontweight="bold")
     # ax.set_xlabel("distribution of fitness effects")
@@ -195,9 +184,7 @@ def histogram_fitness_wrapper(
 def histogram_fitness_draw(
     data: SequencingData,
     read_threshold: int = 20,
-    gaussian: bool = False,
-    sigma_cutoff: int = 3,
-) -> matplotlib.figure:
+) -> matplotlib.figure.Figure:
     """
     Draw a histogram figure for fitness values of a dataset
 
@@ -207,13 +194,11 @@ def histogram_fitness_draw(
         Data from experiment sequencing with count-, enrichment-, and fitness-values
     read_threshold : int, optional
         Minimum number of reads for fitness value to be considered valid, by default 20
-    gaussian: bool, optional
 
     Returns
     -------
-    fig_dfe_all : matplotlib.figure
+    fig_dfe_all : matplotlib.figure.Figure
     """
-    counts_dict = data.counts
     fitness_dict = data.fitness
     gene = data.gene
     # ! wild-type mask
@@ -226,7 +211,7 @@ def histogram_fitness_draw(
         num_columns = num_rows + 1
 
     dfs_fitness_filt = data.filter_fitness_read_noise(
-        counts_dict, fitness_dict, read_threshold=read_threshold
+        read_threshold=read_threshold
     )
 
     # get bins for histogram
@@ -258,17 +243,10 @@ def histogram_fitness_draw(
         df_fitness_sample.name = sample
         ax = axs.flat[i]
         histogram_fitness_wrapper(df_fitness_sample, bins, ax=ax)
-        legend_labels = ["all mutations", "synonymous", "stop"]
-        if gaussian is True:
-            mu, std = build_gaussian_model_1d(df_fitness_sample)
-            left_bound = mu - (sigma_cutoff * std)
-            right_bound = mu + (sigma_cutoff * std)
-            ax.axvline(left_bound, linestyle="dashed", color="blue")
-            ax.axvline(right_bound, linestyle="dashed", color="red")
-            legend_labels = [f"-{sigma_cutoff}$\sigma$", f"+{sigma_cutoff}$\sigma$", "all mutations", "synonymous", "stop"]
 
+    _, labels = ax.get_legend_handles_labels()
     fig_dfe_all.legend(
-        legend_labels,
+        labels[:3],
         loc="center left",
         bbox_to_anchor=(1, 0.5),
         ncol=1,

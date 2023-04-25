@@ -21,14 +21,14 @@ def heatmap_wrapper(
     name: str,
     dataset: str,
     gene: Gene,
-    ax: matplotlib.axes = None,
+    ax: matplotlib.axes.Axes = None,
     cbar: bool = False,
-    cbar_ax: matplotlib.axes = None,
+    cbar_ax: matplotlib.axes.Axes = None,
     vmin: float = -2.0,
     vmax: float = 2.0,
     fitness_cmap: str = "vlag",
     orientation: str = "horizontal",
-) -> matplotlib.axes:
+) -> matplotlib.axes.Axes:
     """
     Function wrapper for preferred heatmap aesthetic settings
 
@@ -42,11 +42,11 @@ def heatmap_wrapper(
         Type of data ("counts" or "fitness")
     gene : Gene
         Gene object to provide residue numbering
-    ax : matplotlib.axes, optional
+    ax : matplotlib.axes.Axes, optional
         Axes on which to draw the data, by default None
     cbar : bool, optional
         Whether to draw a colorbar or not, by default False
-    cbar_ax : matplotlib.axes, optional
+    cbar_ax : matplotlib.axes.Axes, optional
         Axes on which to draw the colorbar, by default None
     vmin : float, optional
         For fitness data, vmin parameter passed to sns.heatmap, by default -2.0
@@ -59,7 +59,7 @@ def heatmap_wrapper(
 
     Returns
     -------
-    h : matplotlib.axes
+    h : matplotlib.axes.Axes
         Axes object with the heatmap
     """
     if ax is None:
@@ -109,14 +109,20 @@ def heatmap_wrapper(
         labelbottom=False,
         labelleft=False,
         rotation=0,
-        labelsize=3,
+        labelsize="medium",
         length=0,
-        pad=1,
+        pad=2,
     )
     h.tick_params(axis="y", labelsize=4)
     if orientation == "horizontal":
-        h.tick_params(labelsize=1.5)
-        h.tick_params(axis="x", rotation=90, labelsize=2)
+        h.tick_params(labelsize="xx-small")
+        h.tick_params(axis="x", rotation=90, labelsize="xx-small")
+    
+    # * fix position labels
+    if orientation == "vertical":
+        h.set_yticks(h.get_yticks(), df.index + 1)
+    elif orientation == "horizontal":
+        h.set_xticks(h.get_xticks(), df.columns + 1)
 
     # * add colorbar if desired
     if cbar is True and cbar_ax is None:
@@ -198,7 +204,7 @@ def heatmap_draw(
     vmax: float = 2.0,
     fitness_cmap: str = "vlag",
     orientation: str = "horizontal",
-) -> matplotlib.figure:
+) -> matplotlib.figure.Figure:
     """
     Draw a heatmap figure of a dataset
     # TODO: Consider re-adding figure to make a missing chart, but perhaps not really necessary
@@ -224,7 +230,7 @@ def heatmap_draw(
 
     Returns
     -------
-    fig : matplotlib.figure
+    fig : matplotlib.figure.Figure
     """
     wt_mask = heatmap_masks(gene)
 
@@ -288,7 +294,7 @@ def heatmap_draw(
             if "UT" in sample:
                 continue
             dfs_filtered = data.filter_fitness_read_noise(
-                counts_dict, fitness_dict, read_threshold=read_threshold
+                read_threshold=read_threshold
             )
             plot_data = dfs_filtered[sample].mask(wt_mask)
             heatmap_wrapper(
@@ -341,14 +347,14 @@ def heatmap_draw(
 
 
 def relabel_axis(
-    fig: matplotlib.figure, gene: Gene, orientation: str = "horizontal"
+    fig: matplotlib.figure.Figure, gene: Gene, orientation: str = "horizontal"
 ) -> None:
     """
     Here we relabel the position-axis of the heatmap figure to use the Ambler numbering system.
 
     Parameters
     ----------
-    fig : matplotlib.figure
+    fig : matplotlib.figure.Figure
         Parent figure of all the heatmap axes
     gene : Gene
         Gene object that holds a numbering system attribute

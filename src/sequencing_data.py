@@ -19,7 +19,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from natsort import natsorted
-from scipy.stats import norm
 
 from plasmid_map import Gene
 from utils.seq_data_utils import heatmap_masks
@@ -410,8 +409,10 @@ class SequencingData:
 
         Returns
         -------
-        replica_one, replica_two : tuple[str, str]
-            Strings of replica sample names
+        replica_one : str
+            Name of first replicate
+        replica_two : str
+            Name of second replicate
         """
         treatment_pair = [sample for sample in samples if treatment in sample]
         if not treatment_pair:
@@ -444,8 +445,6 @@ class SequencingData:
 
     def filter_fitness_read_noise(
         self,
-        counts_dict: dict,
-        fitness_dict: dict,
         read_threshold: int = 20,
     ) -> dict:
         """
@@ -454,10 +453,6 @@ class SequencingData:
 
         Parameters
         ----------
-        counts_dict : dict
-            Reference with counts dataframes for all samples
-        fitness_dict : dict
-            Reference with fitness dataframes for all samples
         read_threshold : int, optional
             Minimum number of reads required to be included, by default 20
 
@@ -466,6 +461,9 @@ class SequencingData:
         df_treated_filtered : dict
             Fitness tables with insufficient counts filtered out
         """
+        counts_dict = self.counts
+        fitness_dict = self.fitness
+
         dfs_filtered = {}
         for sample in sorted(fitness_dict):
             untreated = self.match_treated_untreated(sample)
@@ -548,6 +546,18 @@ class SequencingDataReplicates(SequencingData):
         data.samples = replicate_samples
         return data
 
+    @SequencingData.samples.setter
+    def samples(self, value):
+        self._samples = value
+        self._treatments = self._get_treatments(value)
+        self._counts = self._get_counts(self._samples, self._inputfolder)
+        self._total_reads = self._get_total_reads(self._inputfolder)
+        self._frequencies = self._get_frequencies(
+            self._counts, self._total_reads, self.extinct_add
+        )
+        self._enrichment = self._get_enrichment(self._frequencies)
+        self._fitness = self._get_fitness(self._enrichment)
+
 class SequencingDataPools(SequencingData):
     r"""
     Class for pooling counts data and calculating fitness values thereafter
@@ -565,17 +575,6 @@ class SequencingDataPools(SequencingData):
         out the extinct mutations, by default 0.001
     """
 
-    def __init__(
-        self,
-        gene: Gene,
-        inputfolder: str,
-        read_threshold: int = 20,
-        extinct_add: int = 0.001,
-    ):
-        super().__init__(gene, inputfolder, read_threshold, extinct_add)
-        # self._pooled_counts = self._get_pooled_counts()
-        # self._pooled_total_reads = self._get_pooled_total_reads()
-
     @SequencingData.samples.setter
     def samples(self, value):
         self._samples = value
@@ -585,7 +584,7 @@ class SequencingDataPools(SequencingData):
         self._frequencies = self._get_frequencies(
             self._counts, self._total_reads, self.extinct_add
         )
-        if len([sample for sample in self.samples if "UT" in sample]) == 1:
+        if len([sample for sample in self._samples if "UT" in sample]) == 1:
             self._enrichment = self._get_enrichment(self._frequencies)
             self._fitness = self._get_fitness(self._enrichment)
 
@@ -615,8 +614,6 @@ class SequencingDataPools(SequencingData):
 
     def filter_fitness_read_noise(
         self,
-        counts_dict: dict,
-        fitness_dict: dict,
         read_threshold: int = 20,
     ) -> dict:
         """
@@ -625,10 +622,6 @@ class SequencingDataPools(SequencingData):
 
         Parameters
         ----------
-        counts_dict : dict
-            Reference with counts dataframes for all samples
-        fitness_dict : dict
-            Reference with fitness dataframes for all samples
         read_threshold : int, optional
             Minimum number of reads required to be included, by default 20
 
@@ -637,6 +630,9 @@ class SequencingDataPools(SequencingData):
         df_treated_filtered : dict
             Fitness tables with insufficient counts filtered out
         """
+        counts_dict = self.counts
+        fitness_dict = self.fitness
+
         dfs_filtered = {}
         for sample in sorted(fitness_dict):
             untreated = self.match_treated_untreated(sample)

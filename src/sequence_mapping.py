@@ -14,8 +14,13 @@ import pysam
 from tqdm import tqdm
 
 from plasmid_map import Gene
-from utils.seq_mapping_utils import (count_mutations, get_time,
-                                     mutation_finder, read_mutations)
+from utils.seq_mapping_utils import (
+    count_mutations,
+    get_time,
+    mutation_finder,
+    read_mutations,
+    revert_poor_quality
+)
 
 
 def parse_args():
@@ -94,7 +99,7 @@ def main() -> None:
     start_time = time.time()
 
     print(f"{get_time()} Finding mutations for {sample_name}...")
-    with pysam.AlignmentFile( # pylint: disable=no-member
+    with pysam.AlignmentFile(  # pylint: disable=no-member
         input_file, "rb", threads=os.cpu_count()
     ) as bam:  # pylint: disable=no-member
         if args.contig:
@@ -106,7 +111,8 @@ def main() -> None:
                 # restrict search to gene region
                 "-c",
                 input_file.as_posix(),
-                f"{contig}:{cds_start+1}-{cds_end}",
+                # f"{contig}:{cds_start+1}-{cds_end}",
+                f"{contig}",
             ).strip()
         )
         with open(
@@ -114,7 +120,7 @@ def main() -> None:
         ) as f:
             f.write(f"{sample_name}\t{num_alignments}\n")
         alns = tqdm(
-            bam.fetch(contig=contig, start=cds_start, stop=cds_end),
+            bam.fetch(contig=contig),# start=cds_start, stop=cds_end),
             total=num_alignments,
             file=sys.stdout,
         )
@@ -123,6 +129,9 @@ def main() -> None:
 
     print(f"{get_time()} Generating mutations table...")
     df_mutations = read_mutations(mutations, gene)
+    print(f"{get_time()} Reverting poor quality mutations...")
+    df_mutations = revert_poor_quality(df_mutations, quality_filter=quality_filter)
+    print(f"{get_time()} Done.")
     df_mutations.name = sample_name
     df_mutations.to_csv(
         output_folder / f"mutations/{sample_name}_all_mutations.tsv",
@@ -131,6 +140,7 @@ def main() -> None:
     )
     df_mutations.to_pickle(output_folder / f"mutations/{sample_name}_all_mutations.pkl")
 
+    print(f"{get_time()} Filtering base qualities...")
     # do a quality check
     df_quality_filter = df_mutations.query("base_quality >= @quality_filter")
     df_quality_filter.to_csv(

@@ -10,11 +10,9 @@ import pandas as pd
 import seaborn as sns
 from matplotlib.offsetbox import AnchoredText
 
-from fitness_analysis import build_gaussian_model_1d
 from sequencing_data import SequencingData
-from utils.seq_data_utils import (
-    heatmap_masks,
-)
+from utils.seq_data_utils import heatmap_masks
+from visualization.gaussians import gaussian_drug_1d
 
 
 def histogram_mutation_counts(  # pylint: disable=too-many-locals
@@ -138,7 +136,7 @@ def histogram_fitness_wrapper(
         ax=ax,
         color="gray",
         ec="white",
-        alpha=0.6,
+        alpha=0.8,
         label="all mutations",
         zorder=98
     )
@@ -158,7 +156,7 @@ def histogram_fitness_wrapper(
         ax=ax,
         color="greenyellow",
         ec="white",
-        alpha=0.6,
+        alpha=0.8,
         label="synonymous mutations",
         zorder=101,
     )
@@ -169,7 +167,7 @@ def histogram_fitness_wrapper(
         color="lightcoral",
         ec="white",
         lw=0.6,
-        alpha=0.6,
+        alpha=0.8,
         label="stop mutations",
         zorder=101,
     )
@@ -184,6 +182,8 @@ def histogram_fitness_wrapper(
 def histogram_fitness_draw(
     data: SequencingData,
     read_threshold: int = 20,
+    gaussian: bool = True,
+    sigma_cutoff: int = 4
 ) -> matplotlib.figure.Figure:
     """
     Draw a histogram figure for fitness values of a dataset
@@ -194,6 +194,10 @@ def histogram_fitness_draw(
         Data from experiment sequencing with count-, enrichment-, and fitness-values
     read_threshold : int, optional
         Minimum number of reads for fitness value to be considered valid, by default 20
+    gaussian : bool, optional
+        Whether to draw 1D Gaussian cutoffs
+    sigma_cutoff : int, optional
+        Number of sigma to use to calculate significance, by default 4
 
     Returns
     -------
@@ -243,10 +247,15 @@ def histogram_fitness_draw(
         df_fitness_sample.name = sample
         ax = axs.flat[i]
         histogram_fitness_wrapper(df_fitness_sample, bins, ax=ax)
+        if gaussian:
+            gaussian_drug_1d(df_fitness_sample, ax, sigma_cutoff=sigma_cutoff)
 
     _, labels = ax.get_legend_handles_labels()
+    fig_labels = labels[:3]
+    if gaussian:
+        fig_labels = labels[:5]
     fig_dfe_all.legend(
-        labels[:3],
+        fig_labels,
         loc="center left",
         bbox_to_anchor=(1, 0.5),
         ncol=1,

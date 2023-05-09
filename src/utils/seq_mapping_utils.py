@@ -86,10 +86,24 @@ def mutation_finder(
                     )
                 )
 
+    df = pd.DataFrame(
+        mutations,
+        columns=[
+            "read_id",
+            "ref_pos",
+            "ref_base",
+            "query_pos",
+            "query_base",
+            "base_quality",
+            "query_seq",
+            "cds_overlap_length",
+        ],
+    )
+
     print(f"{len(insertions):,} sequences found with insertions")
     print(f"{len(deletions):,} sequences found with deletions")
     print(f"{len(wildtypes):,} sequences found with wild-type")
-    return mutations
+    return df
 
 
 def revert_poor_quality(df: pd.DataFrame, quality_filter: int=30) -> pd.DataFrame:
@@ -120,18 +134,26 @@ def revert_poor_quality(df: pd.DataFrame, quality_filter: int=30) -> pd.DataFram
         query_codon = data["query_codon"].values[0]
         intra_codon_positions_list = data["intra_codon_pos"].agg(list)
         base_quality_list = data["base_quality"].agg(list)
+        query_codon = ""
         for pos, quality in zip(intra_codon_positions_list, base_quality_list):
             if quality < quality_filter:
-                query_codon = "".join(
-                    [query_codon[:pos], ref_codon[pos], query_codon[pos + 1 :]]
-                )
-                df.loc[data.index, "query_codon"] = query_codon
+                query_codon += ref_codon[pos]
+            else:
+                try:
+                    query_codon += query_codon[pos]
+                except IndexError:
+                    pass
+            try:
                 df.loc[data.index, "query_aa"] = translation_table[query_codon]
+                df.loc[data.index, "query_codon"] = query_codon
+            except KeyError:
+                df.loc[data.index, "query_aa"] = pd.NA
+                df.loc[data.index, "query_codon"] = pd.NA
     return df
 
 
 def read_mutations(
-    mutations: List[tuple[str, int, str, int, str, str, str, int]],
+    df_mutations: pd.DataFrame,
     gene: Gene,
 ) -> pd.DataFrame:
     """
@@ -140,8 +162,8 @@ def read_mutations(
 
     Parameters
     ----------
-    mutations : List[tuple[str, int, str, int, str, str, str, int]]
-        List of mutation records
+    df_mutations: pd.DataFrame
+        DataFrame of mutation records
     gene : Gene
         Gene with wild-type sequences
 
@@ -150,22 +172,9 @@ def read_mutations(
     df : pd.DataFrame
         Mutation table
     """
-    df = pd.DataFrame(
-        mutations,
-        columns=[
-            "read_id",
-            "ref_pos",
-            "ref_base",
-            "query_pos",
-            "query_base",
-            "base_quality",
-            "query_seq",
-            "cds_overlap_length",
-        ],
-    )
     # set dtypes, we're trying to save memory
     # if you have a bigger genome you might have to upcast ref_pos to Int32
-    df = df.astype(
+    df = df_mutations.astype(
         {
             "ref_pos": "Int16",
             "ref_base": "string",

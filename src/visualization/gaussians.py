@@ -217,7 +217,7 @@ def gaussian_drug_1d(
     right_bound = mu + (sigma_cutoff * std)
     ax.axvline(left_bound, label=f"-{sigma_cutoff}$\sigma$", linestyle="dashed", color="blue", zorder=100)
     ax.axvline(right_bound, label=f"+{sigma_cutoff}$\sigma$", linestyle="dashed", color="red", zorder=100)
-    ax.set_xlabel("")
+    # ax.set_xlabel("")
     ax.legend()
     
     return ax

@@ -424,7 +424,7 @@ def gaussian_significance_1d(
         return (np.array(value) >= 0).all()
 
     def is_negative_quadrant(value):
-        return (np.array(value) <= 1).all()
+        return (np.array(value) <= 0).all()
 
     def is_significant_sensitive(value):
         return is_significant(value) and is_negative_quadrant(value)
@@ -532,7 +532,7 @@ def significance_sigma_mutations_1d(
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore")
                 fitness_entry = {
-                    "aa_pos": position + 1,
+                    "aa_pos": position + 1, # * correct index to start with '1'
                     "ref_aa": cds_translation[position],
                     "query_aa": residue,
                     "drug": drug,

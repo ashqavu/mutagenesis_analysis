@@ -215,13 +215,9 @@ class SequencingData:
         frequencies = dict.fromkeys(counts)
         for name in frequencies:
             adjusted_counts = counts[name].add(
-                extinct_add  # ! added 0.001 here for extinct mutations
+                extinct_add
             )
             df_freqs = adjusted_counts.divide(total_reads[name])
-            # if "UT" in name:
-            #     df_freqs = df_freqs[adjusted_counts != 0]
-            # ! we will now be filtering out counts with insufficient UT reads when
-            # ! after calculating fitness in self._get_fitness
             df_freqs.name = name
             frequencies[name] = df_freqs
         return frequencies
@@ -315,7 +311,6 @@ class SequencingData:
             df_enriched = enrichment[sample]
             SynWT_enrichment = df_enriched["∅"]
             # ? calculate mean from fitting normalized curve or by nanmean
-            # SynWT_mean, _ = norm.fit(SynWT_enrichment.dropna())
             SynWT_mean = np.nanmean(SynWT_enrichment)
             normalized = df_enriched.subtract(SynWT_mean)
             normalized.name = sample
@@ -397,6 +392,7 @@ class SequencingData:
         return self._fitness
 
     def get_pairs(self, treatment: str, samples: list) -> tuple[str, str]:
+        # TODO: implement ability to find more than 2 matches
         """
         Given a drug, extract the replicas from the list of samples
 
@@ -471,7 +467,7 @@ class SequencingData:
             df_counts_sample = counts_dict[sample]
             df_fitness_sample = fitness_dict[sample]
             dfs_filtered[sample] = df_fitness_sample.where(
-                df_counts_sample.ge(read_threshold) & df_counts_untreated.ge(read_threshold)
+                df_counts_sample.ge(read_threshold) | df_counts_untreated.ge(read_threshold)
             )
         return dfs_filtered
 
@@ -640,6 +636,6 @@ class SequencingDataPools(SequencingData):
             df_counts_sample = counts_dict[sample]
             df_fitness_sample = fitness_dict[sample]
             dfs_filtered[sample] = df_fitness_sample.where(
-                df_counts_sample.ge(read_threshold) & df_counts_untreated.ge(read_threshold)
+                df_counts_sample.ge(read_threshold) | df_counts_untreated.ge(read_threshold)
             )
         return dfs_filtered

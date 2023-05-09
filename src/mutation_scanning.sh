@@ -3,7 +3,7 @@
 #SBATCH -p 256GBv1
 #SBATCH -e %a.err
 #SBATCH -o %a.out
-#SBATCH -t 0:30:0
+#SBATCH -t 1:00:0
 
 #SBATCH --mail-type NONE
 

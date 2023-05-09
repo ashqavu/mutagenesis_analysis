@@ -6,12 +6,11 @@ Plot shish-kabob plots for significant mutations found in mutagenesis studies
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import seaborn as sns
 from matplotlib.patches import Rectangle
 
 from fitness_analysis import (
-    significance_sigma_dfs_1d,
+    significance_sigma_dfs_1d, significance_sigma_dfs_2d
 )
 from sequencing_data import SequencingData
 from visualization.gaussians import gaussian_drug_2d, gaussian_drug_1d
@@ -60,56 +59,42 @@ def shish_kabob_drug(
     if ax is None:
         ax = plt.gca()
 
-    dfs_filtered = data.filter_fitness_read_noise(read_threshold=read_threshold)
-    df = dfs_filtered[drug]
     if gaussian == "2D":
-        pass
-        # df_all_fitness_sigma = significance_sigma_mutations_2d(
-        #     data, read_threshold=read_threshold, sigma_cutoff=sigma_cutoff
-        # )
-
-        # * get residue positions with significant mutations
-        # df_all_significant = df_all_fitness_sigma.query("significant == True")
         # * find fitness value of greatest magnitude between pair
-
-        # replica_one, replica_two = data.get_pairs(drug, data.samples)
-        # df1 = dfs_filtered[replica_one]
-        # df2 = dfs_filtered[replica_two]
-        # df1 = df1.mask(wt_mask)
-        # df2 = df2.mask(wt_mask)
-
-        # significant_sensitive, significant_resistant, _ = gaussian_significance_2d(
-        #     df1,
-        #     df2,
-        #     sigma_cutoff=sigma_cutoff,
-        # )
-
-        # * get residue positions with significant mutations
-        # significant_positions = (
-        #     significant_sensitive.drop("*", axis=1) | significant_resistant.drop("*", axis=1)
-        # ).sum(axis=1) > 0
-        # significant_positions = significant_positions[significant_positions].index
+        replica_one, replica_two = data.get_pairs(drug, data.samples)
+        df1 = data.fitness[replica_one]
+        df2 = data.fitness[replica_two]
+        
         # * find fitness value of greatest magnitude between pair
-        # df = df1[df1.abs().ge(df2.abs())]
-        # df.update(df2[df2.abs().ge(df1.abs())])
+        df = df1[df1.abs().ge(df2.abs())]
+        df.update(df2[df2.abs().ge(df1.abs())])
 
+        (
+            significant_sensitive_dfs,
+            significant_resistant_dfs
+        ) = significance_sigma_dfs_2d(
+            data, read_threshold=read_threshold, sigma_cutoff=sigma_cutoff
+        )
+        
     elif gaussian == "1D":
+        df = data.fitness[drug]
+
         (
             significant_sensitive_dfs,
             significant_resistant_dfs,
         ) = significance_sigma_dfs_1d(
             data, read_threshold=read_threshold, sigma_cutoff=sigma_cutoff
         )
+    significant_sensitive = significant_sensitive_dfs[drug]
+    significant_resistant = significant_resistant_dfs[drug]
 
-        significant_sensitive = significant_sensitive_dfs[drug]
-        significant_resistant = significant_resistant_dfs[drug]
+    # * get residue positions with significant mutations
+    significant_positions = (
+        significant_sensitive.drop("*", axis=1)
+        | significant_resistant.drop("*", axis=1)
+    ).sum(axis=1) > 0
+    significant_positions = significant_positions[significant_positions].index
 
-        # * get residue positions with significant mutations
-        significant_positions = (
-            significant_sensitive.drop("*", axis=1)
-            | significant_resistant.drop("*", axis=1)
-        ).sum(axis=1) > 0
-        significant_positions = significant_positions[significant_positions].index
     # * select only mutations with significant fitness values
     df_masked = df.where(significant_resistant | significant_sensitive)
     df_masked = df_masked.drop("∅", axis=1)

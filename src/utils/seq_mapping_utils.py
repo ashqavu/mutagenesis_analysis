@@ -2,14 +2,21 @@
 """
 Utils functions for counting mutation data from alignment files
 """
+import sys
 import time
 from typing import List
 
 from Bio.Data import CodonTable, IUPACData
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from plasmid_map import Gene
+
+translation_table = CodonTable.standard_dna_table.forward_table
+stop_codons = CodonTable.standard_dna_table.stop_codons
+translation_table.update({stop_codon: "*" for stop_codon in stop_codons})
+
 
 def get_time() -> str:
     """
@@ -20,7 +27,10 @@ def get_time() -> str:
     """
     return f"""[{time.strftime("%H:%M:%S")}]"""
 
-def mutation_finder(alignments, gene: Gene) -> list[str, int, str, int, str, str, str, int]:
+
+def mutation_finder(
+    alignments, gene: Gene
+) -> list[str, int, str, int, str, str, str, int]:
     """
     Find all mutations present in all alignments using Gene as reference
 
@@ -76,33 +86,6 @@ def mutation_finder(alignments, gene: Gene) -> list[str, int, str, int, str, str
                     )
                 )
 
-    print(f"{len(insertions):,} sequences found with insertions")
-    print(f"{len(deletions):,} sequences found with deletions")
-    print(f"{len(wildtypes):,} sequences found with wild-type")
-    return mutations
-
-
-def read_mutations(mutations: List[tuple[str, int, str, int, str, str, str, int]], gene: Gene) -> pd.DataFrame:
-    """
-    Take list of nucleotide mutations found and determine query/reference codons,
-    amino acids, reference positions, etc.
-
-    Parameters
-    ----------
-    mutations : List[tuple[str, int, str, int, str, str, str, int]]
-        List of mutation records
-    gene : Gene
-        Gene with wild-type sequences
-
-    Returns
-    -------
-    df : pd.DataFrame
-        Mutation table
-    """
-    translation_table = CodonTable.standard_dna_table.forward_table
-    stop_codons = CodonTable.standard_dna_table.stop_codons
-    translation_table.update({stop_codon: "*" for stop_codon in stop_codons})
-
     df = pd.DataFrame(
         mutations,
         columns=[
@@ -116,9 +99,82 @@ def read_mutations(mutations: List[tuple[str, int, str, int, str, str, str, int]
             "cds_overlap_length",
         ],
     )
+
+    print(f"{len(insertions):,} sequences found with insertions")
+    print(f"{len(deletions):,} sequences found with deletions")
+    print(f"{len(wildtypes):,} sequences found with wild-type")
+    return df
+
+
+def revert_poor_quality(df: pd.DataFrame, quality_filter: int=30) -> pd.DataFrame:
+    """
+    Revert mutations from base calls with poor quality
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Mutation info table
+    quality_filter : int, optional
+        Minimum base quality score, by default 30
+
+    Returns
+    -------
+    pd.DataFrame
+        Mutation info table with reverted query codons
+    """
+    read_ref_codon_groups = df.groupby(["read_id", "ref_codon_start"])
+    for _, data in tqdm(
+        read_ref_codon_groups, total=len(read_ref_codon_groups.size()), file=sys.stdout
+    ):
+        if len(data["base_quality"]) == 1:
+            continue
+        if all(data["base_quality"].ge(quality_filter)):
+            continue
+        ref_codon = data["ref_codon"].values[0]
+        query_codon = data["query_codon"].values[0]
+        intra_codon_positions_list = data["intra_codon_pos"].agg(list)
+        base_quality_list = data["base_quality"].agg(list)
+        query_codon = ""
+        for pos, quality in zip(intra_codon_positions_list, base_quality_list):
+            if quality < quality_filter:
+                query_codon += ref_codon[pos]
+            else:
+                try:
+                    query_codon += query_codon[pos]
+                except IndexError:
+                    pass
+            try:
+                df.loc[data.index, "query_aa"] = translation_table[query_codon]
+                df.loc[data.index, "query_codon"] = query_codon
+            except KeyError:
+                df.loc[data.index, "query_aa"] = pd.NA
+                df.loc[data.index, "query_codon"] = pd.NA
+    return df
+
+
+def read_mutations(
+    df_mutations: pd.DataFrame,
+    gene: Gene,
+) -> pd.DataFrame:
+    """
+    Take list of nucleotide mutations found and determine query/reference codons,
+    amino acids, reference positions, etc.
+
+    Parameters
+    ----------
+    df_mutations: pd.DataFrame
+        DataFrame of mutation records
+    gene : Gene
+        Gene with wild-type sequences
+
+    Returns
+    -------
+    df : pd.DataFrame
+        Mutation table
+    """
     # set dtypes, we're trying to save memory
     # if you have a bigger genome you might have to upcast ref_pos to Int32
-    df = df.astype(
+    df = df_mutations.astype(
         {
             "ref_pos": "Int16",
             "ref_base": "string",
@@ -127,6 +183,7 @@ def read_mutations(mutations: List[tuple[str, int, str, int, str, str, str, int]
         }
     )
     df = df.astype({"ref_base": "category", "query_base": "category"})
+    df = df.sort_values(["read_id", "ref_pos"])
 
     # * find position of codon's residue in protein
     df["aa_pos"] = (
@@ -137,17 +194,18 @@ def read_mutations(mutations: List[tuple[str, int, str, int, str, str, str, int]
     )
     df["ref_aa"] = df["ref_codon"].map(translation_table).astype("category")
     # * pull up position for the first base of the codon of the nucleotide
-    df["codon_pos"] = df["aa_pos"].map(gene.codon_starts).astype("Int16")
+    df["ref_codon_start"] = df["aa_pos"].map(gene.codon_starts).astype("Int16")
     # * adjust the codon position from the read to set the reading frame
-    df["query_codon_pos"] = df["query_pos"].add(df["codon_pos"] - df["ref_pos"])
+    df["query_codon_start"] = df["query_pos"].add(df["ref_codon_start"] - df["ref_pos"])
     df["query_codon"] = [
         seq[pos : pos + 3] if pd.notnull(pos) else pd.NA
-        for seq, pos in zip(df["query_seq"], df["query_codon_pos"])
+        for seq, pos in zip(df["query_seq"], df["query_codon_start"])
     ]
     df["query_codon"] = df["query_codon"].astype("string").astype("category")
     df["query_aa"] = (
         df["query_codon"].map(translation_table).astype("string").astype("category")
     )
+    df["intra_codon_pos"] = df["ref_pos"] - df["ref_codon_start"]
     df = df[
         [
             "read_id",
@@ -157,13 +215,17 @@ def read_mutations(mutations: List[tuple[str, int, str, int, str, str, str, int]
             "base_quality",
             "aa_pos",
             "ref_codon",
+            "ref_codon_start",
             "ref_aa",
             "query_codon",
+            "query_codon_start",
             "query_aa",
             "query_seq",
             "cds_overlap_length",
+            "intra_codon_pos"
         ]
     ]
+    df = df.drop_duplicates(["read_id", "ref_pos"])
     return df
 
 

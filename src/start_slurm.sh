@@ -31,6 +31,7 @@ while getopts 'i:g:r:x:f:' OPTION; do
   esac
 done
 export SCRIPT_FOLDER=$(dirname $(realpath $0))
+echo $INPUTFOLDER
 
 # build SampleNames.txt output file matching sample number to sample name
 for FILE in $INPUTFOLDER/raw_data/*; do

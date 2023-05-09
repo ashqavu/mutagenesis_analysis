@@ -5,11 +5,11 @@ This script creates a class that holds relevant information about the gene
 file provided.
 """
 from dataclasses import dataclass
+from typing import Dict, List, Union
 
 import numpy as np
 import pandas as pd
-from Bio import SeqIO
-import Bio
+from Bio import SeqFeature, SeqIO
 
 
 @dataclass
@@ -24,7 +24,7 @@ class Gene:
     _gbk_record: str
     gene_name: str
 
-    def get_feature_type(self, SeqRecord: SeqIO.SeqRecord, feature_type: str) -> Bio.SeqFeature:
+    def get_feature_type(self, SeqRecord: SeqIO.SeqRecord, feature_type: str) -> Union[SeqFeature.SeqFeature, None]:
         """
         From plasmid map, retrieve gene features to extract gene sequencing data from.
 
@@ -37,7 +37,7 @@ class Gene:
 
         Returns
         -------
-        Bio.SeqFeature
+        SeqFeature.SeqFeature | None
         """
         for f in SeqRecord.features:
             if f.type == feature_type:
@@ -69,21 +69,21 @@ class Gene:
         return self.gbk_record.seq
 
     @property
-    def cds(self) -> Bio.SeqFeature:
+    def cds(self) -> Union[SeqFeature.SeqFeature, None]:
         """
         Biopython feature from annotated .gbk sequence of coding region of the
         indicated gene
 
         Returns
         -------
-        Bio.SeqFeature
+        Bio.SeqFeature | None
         """
         if any(f.type == "CDS" for f in self.gbk_record.features):
             return self.get_feature_type(self.gbk_record, "CDS")
         return None
 
     @property
-    def cds_seq(self) -> SeqIO.SeqRecord:
+    def cds_seq(self) -> Union[SeqFeature.SeqFeature, None]:
         """
         Nucleotide sequence of coding-region of gene
 
@@ -96,7 +96,7 @@ class Gene:
         return None
 
     @property
-    def cds_translation(self) -> SeqIO.SeqRecord:
+    def cds_translation(self) -> Union[SeqFeature.SeqFeature, None]:
         """
         Translated protein sequence of gene coding region
 
@@ -109,13 +109,13 @@ class Gene:
         return None
 
     @property
-    def codon_starts(self) -> pd.Series:
+    def codon_starts(self) -> Union[pd.Series, None]:
         """
         Nucleotide positions of each codon start position
 
         Returns
         -------
-        pd.Series
+        pd.Series | None
         """
         if any(f.type == "CDS" for f in self.gbk_record.features):
             return pd.Series(
@@ -124,13 +124,13 @@ class Gene:
         return None
 
     @property
-    def cds_codon_dict(self) -> dict:
+    def cds_codon_dict(self) -> Union[Dict[int, str], None]:
         """
         Dictionary matching codon-index to codon nucleotide position
 
         Returns
         -------
-        dict
+        Dict[int, str] | None
         """
         if any(f.type == "CDS" for f in self.gbk_record.features):
             cds_codons = [
@@ -153,7 +153,7 @@ class TEM1_gene(Gene):
     gene_name: str = "blaTEM-1"
 
     @property
-    def mat_peptide(self) -> Bio.SeqFeature:
+    def mat_peptide(self) -> SeqFeature.SeqFeature:
         """
         'Mature peptide' feature from annotated GenBank file
 
@@ -164,7 +164,7 @@ class TEM1_gene(Gene):
         return self.get_feature_type(self.gbk_record, "mat_peptide")
 
     @property
-    def ambler_numbering(self) -> list:
+    def ambler_numbering(self) -> List[int]:
         """
         Class A beta-lactamases have a standardized numbering schemes, which
         results in each beta-lactamase gene having weird start/stop numbers and
@@ -178,14 +178,14 @@ class TEM1_gene(Gene):
         return list(range(3, 239)) + list(range(240, 253)) + list(range(254, 292))
 
     @property
-    def sublibrary_positions(self) -> dict:
+    def sublibrary_positions(self) -> Dict[str, List[int]]:
         """
         Our mutagenesis library is divided into 10 sublibraries covering
         specific mutations, as indicated here.
 
         Returns
         -------
-        dict
+        Dict[str, List[int]]
         """
         sublibrary_names = [
             "MAS5",

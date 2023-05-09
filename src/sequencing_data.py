@@ -11,145 +11,19 @@ sequencing.
 
 import copy
 import csv
+from functools import reduce
 import glob
 import re
 from pathlib import Path
 
-from Bio.Data import IUPACData
 import numpy as np
 import pandas as pd
 from natsort import natsorted
-from scipy.stats import norm
 
 from plasmid_map import Gene
+from utils.seq_data_utils import heatmap_masks
 
-# TODO: get_pairs, match_treated_untreated, filter_fitness_read_noise can probably go in a separate tools .py # pylint: disable=fixme,line-too-long
 # TODO: fix @fitness to not be a property i guess
-
-
-def get_pairs(treatment: str, samples: list) -> tuple[str, str]:
-    """
-    Given a drug, extract the replicas from the list of samples
-
-    Parameters
-    ----------
-    treatment : str
-        Drug to find replicates of
-    samples : list
-        Reference for fitness values of all samples
-
-    Returns
-    -------
-    replica_one, replica_two : tuple[str, str]
-        Strings of replica sample names
-    """
-    treatment_pair = [sample for sample in samples if treatment in sample]
-    if not treatment_pair:
-        raise KeyError(f"No fitness data: {treatment}")
-    if len(treatment_pair) > 2:
-        raise IndexError("Treatment has more than 2 replicates to compare")
-    replica_one, replica_two = treatment_pair[0], treatment_pair[1]
-    return replica_one, replica_two
-
-
-def match_treated_untreated(sample: str) -> str:
-    """
-    Takes name of treated sample (e.g. CefX3) and matches it to the
-    corresponding untreated sample name (UT3) for proper comparisons.
-
-    Parameters
-    ----------
-    sample : str
-        Name of sample
-
-    Returns
-    -------
-    untreated : str
-        Name of corresponding untreated smple
-    """
-    r = re.compile(r"_(\d+)")
-    num = r.findall(sample)[0]
-    untreated = f"UT_{num}"
-    return untreated
-
-
-def heatmap_table(gene: Gene) -> pd.DataFrame:
-    """
-    Returns DataFrame for plotting heatmaps with position indices and residue
-    columns (ACDEFGHIKLMNPQRSTVWY*∅)
-
-    Parameters
-    ----------
-    gene : Gene
-        Gene object with translated protein sequence
-
-    Returns
-    -------
-    df : pd.DataFrame
-        DataFrame of Falses
-    """
-    df = pd.DataFrame(
-        False,
-        index=np.arange(len(gene.cds_translation)),
-        columns=list(IUPACData.protein_letters + "*∅"),
-    )
-    return df
-
-
-def heatmap_masks(gene: Gene) -> pd.DataFrame:
-    """
-    Returns a bool DataFrame with wild-type cells marked as True for heatmap
-    plotting
-
-    Parameters
-    ----------
-    gene : Gene
-        Object providing translated protein sequence
-
-    Returns
-    -------
-    df_wt : pd.DataFrame
-        DataFrame to use for marking wild-type cells on heatmaps
-    """
-    df_wt = heatmap_table(gene)
-    for position, residue in enumerate(gene.cds_translation):
-        df_wt.loc[position, residue] = True
-    return df_wt
-
-
-def filter_fitness_read_noise(
-    counts_dict: dict,
-    fitness_dict: dict,
-    read_threshold: int = 20,
-) -> dict:
-    """
-    Takes DataFrames for treated sample and returns a new DataFrame with cells
-    with untreated counts under the minimum read threshold filtered out
-
-    Parameters
-    ----------
-    counts_dict : dict
-        Reference with counts dataframes for all samples
-    fitness_dict : dict
-        Reference with fitness dataframes for all samples
-    read_threshold : int, optional
-        Minimum number of reads required to be included, by default 20
-
-    Returns
-    -------
-    df_treated_filtered : dict
-        Fitness tables with insufficient counts filtered out
-    """
-    dfs_filtered = {}
-    for sample in sorted(fitness_dict):
-        untreated = match_treated_untreated(sample)
-        df_counts_untreated = counts_dict[untreated]
-        df_counts_sample = counts_dict[sample]
-        df_fitness_sample = fitness_dict[sample]
-        dfs_filtered[sample] = df_fitness_sample.where(
-            df_counts_sample.ge(read_threshold) & df_counts_untreated.ge(read_threshold)
-        )
-    return dfs_filtered
 
 
 class SequencingData:
@@ -166,7 +40,6 @@ class SequencingData:
     extinct_add : int, optional
         Amount to add to counts when calculating frequencies in order to separate
         out the extinct mutations, by default 0.001
-
     """
 
     def __init__(
@@ -368,24 +241,15 @@ class SequencingData:
         -------
         enrichment : dict
             Dictionary with sample names as keys and enrichment dataframes as values
-
-        Raises
-        ------
-        LookupError
-            Will not be able to calculate enrichment properly if there is more
-            than one untreated sample to compare frequencies to
         """
 
         untreated = [x for x in frequencies if "UT" in x]
-        num_untreated = len(untreated)
-        if num_untreated > 1:
-            raise LookupError("More than one untreated sample found in dataset")
 
         enrichment = {}
         for sample in frequencies:
             if "UT" in sample:
                 continue
-            untreated = match_treated_untreated(sample)
+            untreated = self.match_treated_untreated(sample)
             df_untreated = frequencies[untreated]
             df_treated = frequencies[sample]
             df_enriched = df_treated.divide(df_untreated)
@@ -419,7 +283,7 @@ class SequencingData:
             Masked fitness dataframe
         """
         sample_name = fitness_df.name
-        untreated = match_treated_untreated(sample_name)
+        untreated = self.match_treated_untreated(sample_name)
         untreated_counts = counts_dict[untreated]
         treated_counts = counts_dict[sample_name]
         fitness_masked = fitness_df.mask(
@@ -442,19 +306,7 @@ class SequencingData:
         -------
         fitness : dict
             Dictionary with sample names as keys and fitness dataframes as values
-
-        Raises
-        ------
-        LookupError
-            Will not be able to calculate enrichment properly (and thus
-            fitness) if there is more than one untreated sample to compare
-            frequencies to
         """
-
-        untreated = [x for x in enrichment if "UT" in x]
-        num_untreated = len(untreated)
-        if num_untreated > 1:
-            raise LookupError("More than one untreated sample found in dataset")
 
         fitness = {}
         for sample in sorted(enrichment):
@@ -462,21 +314,23 @@ class SequencingData:
                 continue
             df_enriched = enrichment[sample]
             SynWT_enrichment = df_enriched["∅"]
-            SynWT_mean, _ = norm.fit(SynWT_enrichment.dropna())
+            # ? calculate mean from fitting normalized curve or by nanmean
+            # SynWT_mean, _ = norm.fit(SynWT_enrichment.dropna())
+            SynWT_mean = np.nanmean(SynWT_enrichment)
             normalized = df_enriched.subtract(SynWT_mean)
             normalized.name = sample
             fitness[sample] = normalized
 
             # ! mask out wild-type positions
-            # fitness_masked = normalized.mask(heatmap_masks(self.gene))
-            # fitness_masked.name = sample
+            fitness_masked = normalized.mask(heatmap_masks(self.gene))
+            fitness_masked.name = sample
             # * here mask where untreated counts are insufficient but treated counts
             # * are large (i.e. highly beneficial mutations)
             # fitness_masked = self._mask_untreated_zero(
             #     counts, fitness_masked, read_threshold=read_threshold
             # )
             # fitness_masked.name = sample
-            # fitness[sample] = fitness_masked
+            fitness[sample] = fitness_masked
         return fitness
 
     @property
@@ -492,7 +346,7 @@ class SequencingData:
         self._counts = self._get_counts(self._samples, self._inputfolder)
         self._total_reads = self._get_total_reads(self._inputfolder)
         self._frequencies = self._get_frequencies(
-            self.counts, self.total_reads, self.extinct_add
+            self._counts, self._total_reads, self.extinct_add
         )
         if len([sample for sample in self.samples if "UT" in sample]) == 1:
             self._enrichment = self._get_enrichment(self._frequencies)
@@ -530,7 +384,7 @@ class SequencingData:
         :math:`log_{10}(\frac{f^i{selected}}{f^i_{unselected}})`
         """
         if self._enrichment is None:
-            print("More than one untreated sample found in dataset, cannot calculate enrichment. Reset samples to recalculate.")
+            print("Either more than one untreated sample found in dataset, cannot calculate enrichment. Reset samples to recalculate.")
         return self._enrichment
 
     @property
@@ -539,8 +393,87 @@ class SequencingData:
         :math:`e^i - < e^{WT} >`
         """
         if self._fitness is None:
-            print("More than one untreated sample found in dataset, cannot calculate enrichment. Reset samples to recalculate.")
+            print("Either more than one untreated sample found in dataset, cannot calculate enrichment. Reset samples to recalculate.")
         return self._fitness
+
+    def get_pairs(self, treatment: str, samples: list) -> tuple[str, str]:
+        """
+        Given a drug, extract the replicas from the list of samples
+
+        Parameters
+        ----------
+        treatment : str
+            Drug to find replicates of
+        samples : list
+            Reference for fitness values of all samples
+
+        Returns
+        -------
+        replica_one : str
+            Name of first replicate
+        replica_two : str
+            Name of second replicate
+        """
+        treatment_pair = [sample for sample in samples if treatment in sample]
+        if not treatment_pair:
+            raise KeyError(f"No fitness data: {treatment}")
+        if len(treatment_pair) > 2:
+            raise IndexError("Treatment has more than 2 replicates to compare")
+        replica_one, replica_two = treatment_pair[0], treatment_pair[1]
+        return replica_one, replica_two
+
+
+    def match_treated_untreated(self, sample: str) -> str:
+        """
+        Takes name of treated sample (e.g. CefX3) and matches it to the
+        corresponding untreated sample name (UT3) for proper comparisons.
+
+        Parameters
+        ----------
+        sample : str
+            Name of sample
+
+        Returns
+        -------
+        untreated : str
+            Name of corresponding untreated smple
+        """
+        r = re.compile(r"_(\d+)")
+        num = r.findall(sample)[0]
+        untreated = f"UT_{num}"
+        return untreated
+
+    def filter_fitness_read_noise(
+        self,
+        read_threshold: int = 20,
+    ) -> dict:
+        """
+        Takes DataFrames for treated sample and returns a new DataFrame with cells
+        with untreated counts under the minimum read threshold filtered out
+
+        Parameters
+        ----------
+        read_threshold : int, optional
+            Minimum number of reads required to be included, by default 20
+
+        Returns
+        -------
+        df_treated_filtered : dict
+            Fitness tables with insufficient counts filtered out
+        """
+        counts_dict = self.counts
+        fitness_dict = self.fitness
+
+        dfs_filtered = {}
+        for sample in sorted(fitness_dict):
+            untreated = self.match_treated_untreated(sample)
+            df_counts_untreated = counts_dict[untreated]
+            df_counts_sample = counts_dict[sample]
+            df_fitness_sample = fitness_dict[sample]
+            dfs_filtered[sample] = df_fitness_sample.where(
+                df_counts_sample.ge(read_threshold) & df_counts_untreated.ge(read_threshold)
+            )
+        return dfs_filtered
 
 
 class SequencingDataReplicates(SequencingData):
@@ -564,8 +497,6 @@ class SequencingDataReplicates(SequencingData):
             fitness_all.update(replicate_data.fitness)
         self._enrichment = enrichment_all
         self._fitness = fitness_all
-        # self.enrichment = self._get_enrichment(self.frequencies)
-        # self.fitness = self._get_fitness(self.enrichment)
 
     @property
     def replicate_numbers(self) -> list:
@@ -615,193 +546,100 @@ class SequencingDataReplicates(SequencingData):
         data.samples = replicate_samples
         return data
 
+    @SequencingData.samples.setter
+    def samples(self, value):
+        self._samples = value
+        self._treatments = self._get_treatments(value)
+        self._counts = self._get_counts(self._samples, self._inputfolder)
+        self._total_reads = self._get_total_reads(self._inputfolder)
+        self._frequencies = self._get_frequencies(
+            self._counts, self._total_reads, self.extinct_add
+        )
+        self._enrichment = self._get_enrichment(self._frequencies)
+        self._fitness = self._get_fitness(self._enrichment)
 
-# ! unused class
-class SequencingDataSublibraries:  # pylint: disable=too-few-public-methods
+class SequencingDataPools(SequencingData):
+    r"""
+    Class for pooling counts data and calculating fitness values thereafter
+
+    Parameters
+    ---------
+    gene : Gene
+        Gene object from `plasmid_map`
+    inputfolder : str
+        Project folder
+    read_threshold : int, optional
+        Minimum of reads for a fitness value to be included, by default 20
+    extinct_add : int, optional
+        Amount to add to counts when calculating frequencies in order to separate
+        out the extinct mutations, by default 0.001
     """
-    Class used to combine results when library is sequenced as multiple sublibraries
-    """
 
-    #     def __init__(self, SequencingData):
-    #         self.fullset = SequencingData
-    #         self.samples = self.fullset.samples
-    #         self.treatments = self.fullset.treatments
-    #         self.pools = self._get_sublibrary_pools(self.samples)
-    #         self.counts = self._combine_tables("counts")
-    #         self.fitness = self._combine_tables("fitness")
+    @SequencingData.samples.setter
+    def samples(self, value):
+        self._samples = value
+        self._treatments = value
+        self._counts = self._get_pooled_counts()
+        self._total_reads = self._get_pooled_total_reads()
+        self._frequencies = self._get_frequencies(
+            self._counts, self._total_reads, self.extinct_add
+        )
+        if len([sample for sample in self._samples if "UT" in sample]) == 1:
+            self._enrichment = self._get_enrichment(self._frequencies)
+            self._fitness = self._get_fitness(self._enrichment)
 
-    #     def _get_sublibrary_pools(self, sample_names: list) -> list:
-    #         """
-    #         Determine which sublibraries were pooled given a set of samples named
-    #         by convention <TREATMENT>56, 78, etc.
+    def match_treated_untreated(self, sample: str) -> str:
+        return "UT"
 
-    #         This is specific to our TEM-1 mutagenesis library and will not be able
-    #         to be generalized to other datasets
+    def _get_pooled_counts(self) -> dict:
+        """
+        Override function pools counts for processing
+        """
+        counts_data = {}
+        pooled_counts = {}
+        for treatment in self.treatments:
+            treatment_counts = [value for key, value in self.counts.items() if treatment in key]
+            counts_data[treatment] = treatment_counts
+        for treatment in self.treatments:
+            pooled_counts_df = reduce(lambda a, b: a.add(b, fill_value=0), counts_data[treatment])
+            pooled_counts[treatment] = pooled_counts_df
+        return dict(natsorted(pooled_counts.items()))
 
-    #         Parameters
-    #         ----------
-    #         sample_names : list
-    #             List of sample names fromd dataset
+    def _get_pooled_total_reads(self) -> dict:
+        pooled_total_reads = {}
+        for treatment in self.treatments:
+            treatment_counts = [value for key, value in self.total_reads.items() if treatment in key]
+            pooled_total_reads[treatment] = sum(treatment_counts)
+        return dict(natsorted(pooled_total_reads.items()))
 
-    #         Returns
-    #         -------
-    #         list
-    #             List of pooled groups with numbers as string-ypes
-    #         """
+    def filter_fitness_read_noise(
+        self,
+        read_threshold: int = 20,
+    ) -> dict:
+        """
+        Takes DataFrames for treated sample and returns a new DataFrame with cells
+        with untreated counts under the minimum read threshold filtered out
 
-    #         # * need to strip library numbers in descending order to account for double digit numbers
-    #         sublibrary_numbers = [
-    #             n.removeprefix("MAS") for n in self.fullset.gene.sublibrary_positions.keys()
-    #         ][::-1]
+        Parameters
+        ----------
+        read_threshold : int, optional
+            Minimum number of reads required to be included, by default 20
 
-    #         data_pools = []
-    #         for sample in sample_names:
-    #             name = sample
-    #             # * track the numbers per name
-    #             sample_pool = []
-    #             for n in sublibrary_numbers:
-    #                 # * collect sublibrary numbers from end of name
-    #                 if name.endswith(n):
-    #                     # * insert at index 0 to create ascending order
-    #                     sample_pool.insert(0, n)
-    #                     name = name.removesuffix(n)
-    #             if sample_pool not in data_pools:
-    #                 data_pools.append(sample_pool)
-    #         return data_pools
+        Returns
+        -------
+        df_treated_filtered : dict
+            Fitness tables with insufficient counts filtered out
+        """
+        counts_dict = self.counts
+        fitness_dict = self.fitness
 
-    #     def _get_pool_residues(self, pools: list) -> dict:
-    #         """
-    #         Retrieve list of covered positions from a list of pooled sublibrary numbers
-
-    #         Parameters
-    #         ----------
-    #         pools : list
-    #             List of pooled groups with numbers as string-types
-
-    #         Returns
-    #         -------
-    #         sublibrary_residues : dict
-    #             Covered library positions matched to a concatenated string
-    #             representation of pooled library numbers
-    #         """
-
-    #         pool_residues = {}
-    #         for pool in pools:
-    #             sublibrary_names = ["MAS" + s for s in pool]
-    #             residues = []
-    #             for name in sublibrary_names:
-    #                 residues += self.fullset.gene.sublibrary_positions[name]
-    #             residues.sort()
-    #             # * reverse back to 0-index sorting instead of Ambler numbering to match
-    #             # * other functions
-    #             indices = np.searchsorted(
-    #                 self.fullset.gene.ambler_numbering, residues
-    #             ).tolist()
-    #             pool_residues["".join(pool)] = indices
-    #         return pool_residues
-
-    #     def _combine_tables(self, data_name: str) -> dict:
-    #         """
-    #         Go through sequencing pools and combine positions into one dataframe
-    #         (minus signal peptide)
-
-    #         Parameters
-    #         ----------
-    #         data_name : str
-    #             Data to combine
-
-    #         Returns
-    #         -------
-    #         combined_dict : dict
-    #             Single combined data
-    #         """
-
-    #         if data_name == "fitness":
-    #             treated = [x for x in self.treatments if "UT" not in x]
-    #             df_dict = {key: [] for key in treated}
-    #         elif data_name == "counts":
-    #             df_dict = {key: [] for key in self.treatments}
-
-    #         pool_residues = self._get_pool_residues(self.pools)
-    #         for pool_name, residue_list in pool_residues.items():
-    #             # * make a copy to not overwrite the original dataset
-    #             pool_dataset = copy.deepcopy(self.fullset)
-    #             # * reduce samples in dataset
-    #             pool_dataset.samples = [x for x in self.fullset.samples if pool_name in x]
-    #             if data_name == "fitness":
-    #                 data = pool_dataset.fitness
-    #             elif data_name == "counts":
-    #                 data = pool_dataset.counts
-    #             for name, df in data.items():
-    #                 if data_name == "counts":
-    #                     name = re.sub(r"([^A-Za-z0-9])?\d+$", "", name)
-    #                 sublibrary_data = df.loc[residue_list]
-    #                 df_dict[name].append(sublibrary_data)
-    #         # * iterate back through each treatment and merge the data
-    #         combined_dict = {}
-    #         for treatment, df_list in df_dict.items():
-    #             merged_df = pd.concat(df_list)
-    #             merged_df = merged_df.reindex(np.arange(merged_df.index[-1]), fill_value=0)
-    #             combined_dict[treatment] = merged_df
-    #         return combined_dict
-
-    #     def _combine_fitness(self, dataset: SequencingData) -> dict:
-    #         """
-    #         Go through sequencing pools and appropriate calculate fitness data by
-    #         restricting the positions for each set
-
-    #         Parameters
-    #         ----------
-    #         dataset : SequencingData
-    #             Processed sequencing data
-
-    #         Returns
-    #         -------
-    #         combined_fitness : dict
-    #             Combined fitness data for each treatment (minus signal peptide)
-    #         """
-
-    #         treated = [x for x in self.fullset.treatments if "UT" not in x]
-    #         fitness_dict = {treatment: [] for treatment in treated}
-    #         # go through each pool and restrict the dataset to propertly
-    #         # calculate enrichment/fitness
-    #         pool_residues = self._get_pool_residues(self.pools)
-    #         for pool_name, residue_list in pool_residues.items():
-    #             # make a copy to not overwrite the original dataset
-    #             pool_dataset = copy.deepcopy(self.fullset)
-    #             # reduce samples in dataset
-    #             pool_dataset.samples = [x for x in self.fullset.samples if pool_name in x]
-    #             for treatment, fitness_df in pool_dataset.fitness.items():
-    #                 sublibrary_data = fitness_df.loc[residue_list]
-    #                 fitness_dict[treatment].append(sublibrary_data)
-    #         # iterate back through each treatment and merge the data
-    #         combined_fitness = {
-    #             treatment: pd.concat(df_list) for treatment, df_list in fitness_dict.items()
-    #         }
-
-    #         return combined_fitness
-
-    #     @property
-    #     def enrichment(self):
-    #         raise AttributeError(
-    #             "Enrichment data cannot be accurately represented in combined \
-    #             dataframes, see 'fullset' attribute"
-    #         )
-    pass  # pylint: disable=unnecessary-pass
-
-
-# TEM1 = TEM1_gene(
-#     "/work/greencenter/s426833/TEM-1/ref_data/pBR322_AvrII.gbk", "blaTEM-1"
-# )
-# data1 = SequencingData(
-#     TEM1,
-#     "/endosome/work/greencenter/s426833/TEM-1/experiments/20221102_TEM-1-Mutagenesis_AV",
-# )
-# data2 = SequencingDataReplicates(
-#     TEM1,
-#     "/endosome/work/greencenter/s426833/TEM-1/experiments/20221102_TEM-1-Mutagenesis_AV",
-# )
-# # data1.samples = ["AMP1", "UT1"]
-# # data2.samples = ["AMP1", "UT1"]
-# # print(data1.fitness)
-# print(data2.fitness)
+        dfs_filtered = {}
+        for sample in sorted(fitness_dict):
+            untreated = self.match_treated_untreated(sample)
+            df_counts_untreated = counts_dict[untreated]
+            df_counts_sample = counts_dict[sample]
+            df_fitness_sample = fitness_dict[sample]
+            dfs_filtered[sample] = df_fitness_sample.where(
+                df_counts_sample.ge(read_threshold) & df_counts_untreated.ge(read_threshold)
+            )
+        return dfs_filtered

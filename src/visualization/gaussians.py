@@ -10,7 +10,11 @@ import pandas as pd
 import seaborn as sns
 from matplotlib.patches import Ellipse
 
-from fitness_analysis import gaussian_significance_2d, build_gaussian_model_1d
+from fitness_analysis import (
+    gaussian_significance_2d,
+    build_gaussian_model_1d,
+    build_gaussian_model_1d_mixture,
+)
 from sequencing_data import SequencingData
 from utils.seq_data_utils import heatmap_masks
 
@@ -28,9 +32,7 @@ def gaussian_drug_2d(
     wt_mask = heatmap_masks(gene)
 
     x, y = data.get_pairs(drug, data.samples)
-    dfs_filtered = data.filter_fitness_read_noise(
-        read_threshold=read_threshold
-    )
+    dfs_filtered = data.filter_fitness_read_noise(read_threshold=read_threshold)
     df_x = dfs_filtered[x]
     df_y = dfs_filtered[y]
     df_x = df_x.mask(wt_mask)
@@ -39,7 +41,11 @@ def gaussian_drug_2d(
     # df_x = df_x.loc[23:285]
     # df_y = df_y.loc[23:285]
 
-    significant_sensitive, significant_resistant, ellipses_all = gaussian_significance_2d(
+    (
+        significant_sensitive,
+        significant_resistant,
+        ellipses_all,
+    ) = gaussian_significance_2d(
         df_x,
         df_y,
         sigma_cutoff=sigma_cutoff,
@@ -194,6 +200,7 @@ def gaussian_drug_1d(
     df: pd.DataFrame,
     ax: matplotlib.axes.Axes,
     sigma_cutoff: int = 4,
+    use_synonymous: bool = True,
 ) -> matplotlib.axes.Axes:
     """
     Add boundaries to indicate significance boundaries according to sigma cutoff value
@@ -206,18 +213,35 @@ def gaussian_drug_1d(
         Axes that histogram is plotted on
     sigma_cutoff : int, optional
         Number of sigma to use to calculate significance, by default 4
+    use_synonymous : bool, optional
+        Whether to build a 1-D model using just the synonymous mutations or not, by default True
 
     Returns
     -------
     ax : matplotlib.axes.Axes
         New Axes with significance boundaries drawn on
     """
-    mu, std = build_gaussian_model_1d(df)
+    if use_synonymous:
+        mu, std = build_gaussian_model_1d(df)
+    else:
+        mu, std = build_gaussian_model_1d_mixture(df)
     left_bound = mu - (sigma_cutoff * std)
     right_bound = mu + (sigma_cutoff * std)
-    ax.axvline(left_bound, label=f"-{sigma_cutoff}$\sigma$", linestyle="dashed", color="blue", zorder=100)
-    ax.axvline(right_bound, label=f"+{sigma_cutoff}$\sigma$", linestyle="dashed", color="red", zorder=100)
+    ax.axvline(
+        left_bound,
+        label=rf"-{sigma_cutoff}$\sigma$",
+        linestyle="dashed",
+        color="blue",
+        zorder=100,
+    )
+    ax.axvline(
+        right_bound,
+        label=rf"+{sigma_cutoff}$\sigma$",
+        linestyle="dashed",
+        color="red",
+        zorder=100,
+    )
     # ax.set_xlabel("")
     ax.legend()
-    
+
     return ax

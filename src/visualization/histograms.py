@@ -50,7 +50,10 @@ def histogram_mutation_counts(  # pylint: disable=too-many-locals
         sharey=True,
         sharex=True,
     )
-    fig.suptitle(f"Distribution of counts for all amino acids (min. reads = {read_threshold})", fontsize="xx-large")
+    fig.suptitle(
+        f"Distribution of counts for all amino acids (min. reads = {read_threshold})",
+        fontsize="xx-large",
+    )
 
     for i, sample in enumerate(counts):
         # ! wild-type mask
@@ -59,7 +62,9 @@ def histogram_mutation_counts(  # pylint: disable=too-many-locals
         # ! would need to be changed if you used a different gene
         # * drop final stop codon
         # counts_values = data.counts[sample].loc[23:285].drop(["*", "∅"], axis=1)
-        counts_values = data.counts[sample][:-1].drop(["*", "∅"], axis=1) # exclude the stop codon at the end
+        counts_values = data.counts[sample][:-1].drop(
+            ["*", "∅"], axis=1
+        )  # exclude the stop codon at the end
         library_size = counts_values.shape[0] * (counts_values.shape[1] - 1)
         num_missing = counts_values.lt(read_threshold).sum().sum()
         pct_missing = num_missing / library_size
@@ -88,7 +93,11 @@ def histogram_mutation_counts(  # pylint: disable=too-many-locals
 
         text_mean = f"below threshold (min. {read_threshold}): {num_missing} ({pct_missing:.2%})\nmean of all: {round(mean, 3)}"
         annot_box = AnchoredText(
-            text_mean, loc="upper right", pad=0.8, prop=dict(size="medium"), frameon=True
+            text_mean,
+            loc="upper right",
+            pad=0.8,
+            prop=dict(size="medium"),
+            frameon=True,
         )
         ax.add_artist(annot_box)
     fig.supylabel("num of amino acid mutations", fontsize="large")
@@ -138,7 +147,7 @@ def histogram_fitness_wrapper(
         ec="white",
         alpha=0.8,
         label="all mutations",
-        zorder=98
+        zorder=98,
     )
     # sns.histplot(
     #     values_missense,
@@ -154,7 +163,7 @@ def histogram_fitness_wrapper(
         values_syn,
         bins=bins,
         ax=ax,
-        color="greenyellow",
+        color="xkcd:slate",
         ec="white",
         alpha=0.8,
         label="synonymous mutations",
@@ -164,7 +173,7 @@ def histogram_fitness_wrapper(
         values_stop,
         bins=bins,
         ax=ax,
-        color="lightcoral",
+        color="xkcd:coral",
         ec="white",
         lw=0.6,
         alpha=0.8,
@@ -183,7 +192,8 @@ def histogram_fitness_draw(
     data: SequencingData,
     read_threshold: int = 20,
     gaussian: bool = True,
-    sigma_cutoff: int = 4
+    sigma_cutoff: int = 4,
+    use_synonymous: bool = True,
 ) -> matplotlib.figure.Figure:
     """
     Draw a histogram figure for fitness values of a dataset
@@ -198,6 +208,8 @@ def histogram_fitness_draw(
         Whether to draw 1D Gaussian cutoffs
     sigma_cutoff : int, optional
         Number of sigma to use to calculate significance, by default 4
+    use_synonymous : bool, optional
+        Whether to build a 1-D model using just the synonymous mutations or not, by default True
 
     Returns
     -------
@@ -214,16 +226,19 @@ def histogram_fitness_draw(
     if num_subplots / num_rows > num_rows:
         num_columns = num_rows + 1
 
-    dfs_fitness_filt = data.filter_fitness_read_noise(
-        read_threshold=read_threshold
-    )
+    dfs_fitness_filt = data.filter_fitness_read_noise(read_threshold=read_threshold)
 
     # get bins for histogram
     values_fitness_all = []
     for value in dfs_fitness_filt.values():
         value = value.mask(wt_mask)
         values_fitness_all.extend(value.values)
-    bins = np.linspace(np.nanmin(values_fitness_all), np.nanmax(values_fitness_all), 40)
+    bins = np.linspace(
+        np.nanpercentile(values_fitness_all, 0.1),
+        np.nanpercentile(values_fitness_all, 99.9),
+        30,
+    )
+    # bins = np.linspace(np.nanmin(values_fitness_all), np.nanmax(values_fitness_all), 40)
 
     # start drawing
     with sns.axes_style("whitegrid"):
@@ -248,7 +263,13 @@ def histogram_fitness_draw(
         ax = axs.flat[i]
         histogram_fitness_wrapper(df_fitness_sample, bins, ax=ax)
         if gaussian:
-            gaussian_drug_1d(df_fitness_sample, ax, sigma_cutoff=sigma_cutoff)
+            gaussian_drug_1d(
+                df_fitness_sample,
+                ax,
+                sigma_cutoff=sigma_cutoff,
+                use_synonymous=use_synonymous,
+            )
+        ax.get_legend().remove()
 
     _, labels = ax.get_legend_handles_labels()
     fig_labels = labels[:3]

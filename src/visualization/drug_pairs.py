@@ -24,6 +24,7 @@ def drug_pair(
     sigma_cutoff: int = 4,
     xlim: tuple[float, float] = (-2.5, 2.5),
     ylim: tuple[float, float] = (-2.5, 2.5),
+    use_synonymous: bool = True,
 ) -> None:
     """
     Find common significant resistance/sensitivity mutations between two different drugs
@@ -49,6 +50,8 @@ def drug_pair(
         X-axis limits of figure, by default (-2.5, 2.5)
     ylim : tuple[float, float], optional
         y-axis limits of figure, by default (-2.5, 2.5)
+    use_synonymous : bool, optional
+        Whether to build a 1-D model using just the synonymous mutations or not, by default True
     """
     gene = data.gene
     fitness_filtered_dfs = data.filter_fitness_read_noise(read_threshold=read_threshold)
@@ -81,18 +84,18 @@ def drug_pair(
         drug2_df = fitness_filtered_dfs[drug2].mask(wt_mask)
 
         significant_sensitive_dfs, significant_resistant_dfs = significance_sigma_dfs_1d(
-            data, read_threshold=read_threshold, sigma_cutoff=sigma_cutoff
+            data, read_threshold=read_threshold, sigma_cutoff=sigma_cutoff, use_synonymous=use_synonymous
         )
     drug1_significant_sensitive = significant_sensitive_dfs[drug1]
     drug2_significant_sensitive = significant_sensitive_dfs[drug2]
-    
+
     drug1_significant_resistance = significant_resistant_dfs[drug1]
     drug2_significant_resistance = significant_resistant_dfs[drug2]
-    
+
     # * build numpy matrix of all points for plotting
     X = np.column_stack((drug1_df.values.flatten(), drug2_df.values.flatten()))
     X = X[np.isfinite(X).all(axis=1)]
-    
+
     # * 1-D scatterplots
     # * all mutations
     sns.scatterplot(
@@ -146,7 +149,7 @@ def drug_pair(
         marker="D"
     )
 
-    
+
     # * resistance mutations
     # drug 1
     ax = sns.scatterplot(
@@ -187,7 +190,7 @@ def drug_pair(
         s=5,
         marker="D"
     )
-    
+
     ax.plot([-4, 4], [-4, 4], ":", color="gray", alpha=0.5, zorder=0)
     ax.plot([0, 0], [-4, 4], "-", color="gray", alpha=0.5, lw=1, zorder=0)
     ax.plot([-4, 4], [0, 0], "-", color="gray", alpha=0.5, lw=1, zorder=0)
@@ -210,6 +213,7 @@ def drug_pairs_draw(
     sigma_cutoff: int = 4,
     xlim: tuple[float, float] = (-2.5, 2.5),
     ylim: tuple[float, float] = (-2.5, 2.5),
+    use_synonymous: bool = True
 ):
     """
     Find common significant resistance/sensitivity mutations between two different drugs
@@ -230,6 +234,8 @@ def drug_pairs_draw(
         X-axis limits of figure, by default (-2.5, 2.5)
     ylim : tuple[float, float], optional
         y-axis limits of figure, by default (-2.5, 2.5)
+    use_synonymous : bool, optional
+        Whether to build a 1-D model using just the synonymous mutations or not, by default True
     """
     drugs_all = sorted(drug for drug in data.treatments if "UT" not in drug)
     rows = cols = len(drugs_all) - 1
@@ -259,7 +265,8 @@ def drug_pairs_draw(
                     read_threshold=read_threshold,
                     sigma_cutoff=sigma_cutoff,
                     xlim=xlim,
-                    ylim=ylim
+                    ylim=ylim,
+                    use_synonymous=use_synonymous
                 )
                 if ax_col == 0:
                     ax.set_ylabel(drug_y)

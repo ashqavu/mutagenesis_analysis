@@ -39,7 +39,7 @@ module load python
 conda activate TEM-1
 
 cd $INPUTFOLDER
-mkdir -p flash_merged
+# mkdir -p flash_merged
 mkdir -p results/mutations
 mkdir -p results/counts
 
@@ -49,14 +49,16 @@ REV=$(realpath 'raw_data/'$(ls -v1 raw_data/ --color=never | grep "_S"$SLURM_ARR
 # merge paired-end sequences
 # echo "[$(date +"%T")] flash --min-overlap=10 --max-overlap=151 --output_directory flash_merged --output-prefix=$SAMPLE --compress $FWD $REV"
 # flash --min-overlap=10 --max-overlap=151 --output-directory=flash_merged --output-prefix=$SAMPLE --compress $FWD $REV
-# echo
+echo
 
 # align and sort unpaired sequences
 echo "[$(date +"%T")] bowtie2 -x $BOWTIE_BASENAME -t -q -1 $FWD -2 $REV --very-sensitive-local --no-unal --ma 2 --rfg 1000,1000 -p $NUMCORES |"
+# echo "[$(date +"%T")] bowtie2 -x $BOWTIE_BASENAME -t -q flash_merged/"$SAMPLE".extendedFrags.fastq.gz --very-sensitive-local --no-unal --ma 2 --rfg 1000,1000 -p $NUMCORES |"
 echo "[$(date +"%T")] samtools view -h --threads $NUMCORES -b |"
 echo "[$(date +"%T")] samtools sort --thread $NUMCORES -o alignments/"$SAMPLE".bam"
 echo "[$(date +"%T")] samtools index -b -@ $NUMCORES alignments/"$SAMPLE".bam"
 
+# bowtie2 -x $BOWTIE_BASENAME -t -q flash_merged/"$SAMPLE".extendedFrags.fastq.gz --very-sensitive-local --no-unal --ma 2 --rfg 1000,1000 -p $NUMCORES |
 bowtie2 -x $BOWTIE_BASENAME -t -q -1 $FWD -2 $REV --very-sensitive-local --no-unal --ma 2 --rfg 1000,1000 -p $NUMCORES |
 samtools view -h --threads $NUMCORES -b |
 samtools sort --thread $NUMCORES -o alignments/$SAMPLE.bam 

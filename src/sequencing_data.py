@@ -434,7 +434,7 @@ class SequencingData:
         untreated : str
             Name of corresponding untreated smple
         """
-        r = re.compile(r"_(\d+)")
+        r = re.compile(r"_(\d+)$")
         num = r.findall(sample)[0]
         untreated = f"UT_{num}"
         return untreated
@@ -508,7 +508,7 @@ class SequencingDataReplicates(SequencingData):
 
         replicate_numbers = []
 
-        r = re.compile(r"_(\d+)")
+        r = re.compile(r"_(\d+)$")
         for name in self.samples:
             numbers = r.findall(name)
             replicate_numbers += numbers
@@ -534,7 +534,7 @@ class SequencingDataReplicates(SequencingData):
         """
         data = copy.deepcopy(self)
         replicate_samples = []
-        r = re.compile(r"_(\d+)")
+        r = re.compile(r"_(\d+)$")
         for sample in self.samples:
             replicate_number = r.findall(sample)[0]
             if replicate_number == str(n):
@@ -555,7 +555,7 @@ class SequencingDataReplicates(SequencingData):
         self._fitness = self._get_fitness(self._enrichment)
 
 class SequencingDataPools(SequencingData):
-    r"""
+    """
     Class for pooling counts data and calculating fitness values thereafter
 
     Parameters
@@ -635,7 +635,10 @@ class SequencingDataPools(SequencingData):
             df_counts_untreated = counts_dict[untreated]
             df_counts_sample = counts_dict[sample]
             df_fitness_sample = fitness_dict[sample]
+            # dfs_filtered[sample] = df_fitness_sample.where(
+            #     df_counts_sample.ge(read_threshold) | df_counts_untreated.ge(read_threshold)
+            # )
             dfs_filtered[sample] = df_fitness_sample.where(
-                df_counts_sample.ge(read_threshold) | df_counts_untreated.ge(read_threshold)
+                ~(df_counts_sample.lt(read_threshold) & df_counts_untreated.lt(read_threshold))
             )
         return dfs_filtered

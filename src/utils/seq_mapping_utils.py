@@ -17,7 +17,6 @@ translation_table = CodonTable.standard_dna_table.forward_table
 stop_codons = CodonTable.standard_dna_table.stop_codons
 translation_table.update({stop_codon: "*" for stop_codon in stop_codons})
 
-
 def get_time() -> str:
     """
     Returns

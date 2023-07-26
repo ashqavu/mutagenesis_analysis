@@ -251,7 +251,7 @@ def significance_sigma_dfs_2d(
     significant_sensitive_dfs = {}
     significant_resistant_dfs = {}
     dfs_filtered = data.filter_fitness_read_noise(read_threshold=read_threshold)
-    drugs = set(re.sub("_[0-9]", "", x) for x in fitness_dict)
+    drugs = set(re.sub("_[0-9]$", "", x) for x in fitness_dict)
     for drug in drugs:
         x, y = data.get_pairs(drug, data.samples)
         df_x = dfs_filtered[x].mask(wt_mask)
@@ -346,7 +346,9 @@ def significance_sigma_mutations_2d(
     # make sure both replicates meet noise threshold requirements
     # drop any position where one value is NaN
     below_read_threshold_index = (
-        rel_fitness_1.where(np.isfinite(rel_fitness_1) & np.isfinite(rel_fitness_2)).dropna().index
+        rel_fitness_1.where(np.isfinite(rel_fitness_1) & np.isfinite(rel_fitness_2))
+        .dropna()
+        .index
     )
     df_all_fitness_sigma = df_all_fitness_sigma.loc[below_read_threshold_index]
     return df_all_fitness_sigma
@@ -388,7 +390,7 @@ def build_gaussian_model_1d(df: pd.DataFrame) -> tuple[float, float]:
 
 
 def gaussian_significance_1d(
-    df: pd.DataFrame, sigma_cutoff: int = 4
+    df: pd.DataFrame, sigma_cutoff: int = 4, use_synonymous: bool = True
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Uses mean and standard deviation to determine the 1D Gaussian model and determine
@@ -400,6 +402,8 @@ def gaussian_significance_1d(
         Relative fitness data for drug
     sigma_cutoff : int, optional
         Number of sigma to use to calculate significance, by default 4
+    use_synonymous : bool, optional
+        Whether to build a 1-D model using just the synonymous mutations or not, by default True
 
     Returns
     -------
@@ -411,7 +415,10 @@ def gaussian_significance_1d(
         resistance according to 1D Gaussian model
     """
 
-    mu, std = build_gaussian_model_1d(df)
+    if use_synonymous:
+        mu, std = build_gaussian_model_1d(df)
+    else:
+        mu, std = build_gaussian_model_1d_mixture(df)
 
     # determine significance in 1D
     def is_significant(value):
@@ -439,7 +446,10 @@ def gaussian_significance_1d(
 
 
 def significance_sigma_dfs_1d(
-    data: SequencingData, read_threshold: int = 20, sigma_cutoff: int = 4
+    data: SequencingData,
+    read_threshold: int = 20,
+    sigma_cutoff: int = 4,
+    use_synonymous: bool = True,
 ) -> tuple[Dict[str, pd.DataFrame], Dict[str, pd.DataFrame]]:
     """
     Extracts the significant residue positions from the fitness dataframes according
@@ -454,6 +464,8 @@ def significance_sigma_dfs_1d(
     sigma_cutoff : int, optional
         How many sigmas away from the synonymous mutation values to use as the
         cutoff for significance, by default 4
+    use_synonymous : bool, optional
+        Whether to build a 1-D model using just the synonymous mutations or not, by default True
 
     Returns
     -------
@@ -470,12 +482,12 @@ def significance_sigma_dfs_1d(
     significant_sensitive_dfs = {}
     significant_resistant_dfs = {}
     dfs_filtered = data.filter_fitness_read_noise(read_threshold=read_threshold)
-    drugs = set(re.sub("_[0-9]", "", x) for x in fitness_dict)
+    drugs = set(re.sub("_[0-9]$", "", x) for x in fitness_dict)
     for drug in drugs:
         df = dfs_filtered[drug].mask(wt_mask)
 
         significant_sensitive, significant_resistant = gaussian_significance_1d(
-            df, sigma_cutoff=sigma_cutoff
+            df, sigma_cutoff=sigma_cutoff, use_synonymous=use_synonymous
         )
         significant_sensitive_dfs[drug] = significant_sensitive
         significant_resistant_dfs[drug] = significant_resistant
@@ -486,6 +498,7 @@ def significance_sigma_mutations_1d(
     data: SequencingData,
     read_threshold: int = 20,
     sigma_cutoff: int = 4,
+    use_synonymous: bool = True,
 ) -> pd.DataFrame:
     """
     For pooled measurements, build a 1D Gaussian model and generate a dataframe of the
@@ -499,6 +512,8 @@ def significance_sigma_mutations_1d(
         Minimum number of reads for fitness value to be considered valid, by default 20
     sigma_cutoff : int, optional
         Number of sigma to draw ellipses for, by default 4
+    use_synonymous : bool, optional
+        Whether to build a 1-D model using just the synonymous mutations or not, by default True
 
     Returns
     -------
@@ -513,6 +528,7 @@ def significance_sigma_mutations_1d(
         data,
         read_threshold=read_threshold,
         sigma_cutoff=sigma_cutoff,
+        use_synonymous=use_synonymous,
     )
 
     sample_name = list(fitness_dict)[0]
@@ -532,7 +548,7 @@ def significance_sigma_mutations_1d(
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore")
                 fitness_entry = {
-                    "aa_pos": position + 1, # * correct index to start with '1'
+                    "aa_pos": position + 1,  # * correct index to start with '1',
                     "ref_aa": cds_translation[position],
                     "query_aa": residue,
                     "drug": drug,
@@ -550,3 +566,49 @@ def significance_sigma_mutations_1d(
 
     df_all_fitness_sigma = pd.DataFrame(list_all_fitness)
     return df_all_fitness_sigma
+
+
+def build_gaussian_model_1d_mixture(
+    df: pd.DataFrame, n_components: int = 3
+) -> tuple[float, float]:
+    """
+    Use relative fitness values of all mutations to build a Gaussian mixture model
+    that will determine the 1-D bounds of significance for fitness effects
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Relative fitness data for drug
+    n_components : int, optional
+        Number of components to use for Gaussian mixture model
+
+    Returns
+    -------
+    mu : float
+        Mean for 1-D Gaussian model
+    std : float
+        Standard deviation for 1-D Gaussian model
+    """
+
+    # * 1-D gaussian model fitting for all mutations
+    x = df
+    X = x.values.flatten()
+    X = X[~np.isnan(X)]
+    X = np.expand_dims(X, 1)
+
+    # * build and fit Gaussian mixture model
+    model = GaussianMixture(n_components=n_components, covariance_type="full")
+    model.fit(X)
+    means = model.means_
+    covars = model.covariances_
+
+    # * determine cutoffs significance
+    # calculate standard deviation from covariances
+    stdevs = np.sqrt(covars)
+
+    # * central peak
+    central_mu_idx = np.abs(means).argmin()
+    mu = means[central_mu_idx][0]
+    std = stdevs[central_mu_idx][0][0]
+
+    return mu, std

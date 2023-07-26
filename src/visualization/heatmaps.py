@@ -117,7 +117,7 @@ def heatmap_wrapper(
     if orientation == "horizontal":
         h.tick_params(labelsize="xx-small")
         h.tick_params(axis="x", rotation=90, labelsize="xx-small")
-    
+
     # * fix position labels
     if orientation == "vertical":
         h.set_yticks(h.get_yticks(), df.index + 1)
@@ -125,7 +125,7 @@ def heatmap_wrapper(
         h.set_xticks(h.get_xticks(), df.columns + 1)
 
     # * add colorbar if desired
-    if cbar is True and cbar_ax is None:
+    if cbar and cbar_ax is None:
         cbar = plt.colorbar(
             ax.collections[0],
             shrink=0.2,
@@ -207,7 +207,6 @@ def heatmap_draw(
 ) -> matplotlib.figure.Figure:
     """
     Draw a heatmap figure of a dataset
-    # TODO: Consider re-adding figure to make a missing chart, but perhaps not really necessary
 
     Parameters
     ----------

@@ -16,6 +16,7 @@ from tqdm import tqdm
 from plasmid_map import Gene
 from utils.seq_mapping_utils import (
     count_mutations,
+    count_wildtype,
     get_time,
     mutation_finder,
     read_mutations,
@@ -78,8 +79,6 @@ def main() -> None:
     gene = Gene(args.ref, args.gene)
 
     quality_filter = args.q
-    cds_start = gene.cds.location.start
-    cds_end = gene.cds.location.end
 
     input_file = Path(args.bam)
     input_folder = input_file.parent.parent
@@ -90,15 +89,15 @@ def main() -> None:
     else:
         output_folder = input_folder / "results"
 
-    # make sure folders exists
-    if not os.path.exists(output_folder / "counts"):
-        os.makedirs(output_folder / "counts")
-    if not os.path.exists(output_folder / "mutations/quality_filtered/seq_lengths"):
-        os.makedirs(output_folder / "mutations/quality_filtered/seq_lengths")
+    # make sure folders exist
+    (output_folder / "counts").mkdir(parents=True, exist_ok=True)
+    (output_folder / "mutations").mkdir(parents=True, exist_ok=True)
+    (output_folder / "wildtypes").mkdir(parents=True, exist_ok=True)
+    (output_folder / "mutations/quality_filtered/seq_lengths").mkdir(parents=True, exist_ok=True)
 
     start_time = time.time()
 
-    print(f"{get_time()} Finding mutations for {sample_name}...")
+    print(f"{get_time()} Finding all base mutations for {sample_name}...")
     with pysam.AlignmentFile(  # pylint: disable=no-member
         input_file, "rb", threads=os.cpu_count()
     ) as bam:  # pylint: disable=no-member
@@ -108,55 +107,60 @@ def main() -> None:
             contig = bam.header.references[0]
         num_alignments = int(
             pysam.view(  # pylint: disable=no-member
-                # restrict search to gene region
                 "-c",
                 input_file.as_posix(),
+                # restrict search to gene region
                 # f"{contig}:{cds_start+1}-{cds_end}",
                 f"{contig}",
             ).strip()
         )
         with open(
-            input_folder / "alignments/total_reads.tsv", "a", encoding="utf-8"
+            input_folder / "alignments/total_reads.csv", "a", encoding="utf-8"
         ) as f:
-            f.write(f"{sample_name}\t{num_alignments}\n")
+            f.write(f"{sample_name},{num_alignments}\n")
         alns = tqdm(
             bam.fetch(contig=contig),# start=cds_start, stop=cds_end),
             total=num_alignments,
             file=sys.stdout,
         )
-        mutations = mutation_finder(alns, gene)
+        wildtype, mutations = mutation_finder(alns, gene)
     print(f"{get_time()} Done")
+
+    print(f"{get_time()} Generating wild-types table...")
+    df_wildtypes = read_mutations(wildtype, gene)
+    df_wildtypes.name = sample_name
+    df_wildtypes.to_csv(
+        output_folder / f"wildtypes/{sample_name}_all_wildtype_positions.csv",
+        index=False
+    )
+    df_wildtypes.to_pickle(output_folder / f"wildtypes/{sample_name}_all_wildtype_positions.pkl")
+    print(f"{get_time()} Done.")
 
     print(f"{get_time()} Generating mutations table...")
     df_mutations = read_mutations(mutations, gene)
-    print(f"{get_time()} Reverting poor quality mutations...")
-    df_mutations = revert_poor_quality(df_mutations, quality_filter=quality_filter)
-    print(f"{get_time()} Done.")
     df_mutations.name = sample_name
     df_mutations.to_csv(
-        output_folder / f"mutations/{sample_name}_all_mutations.tsv",
-        index=False,
-        sep="\t",
+        output_folder / f"mutations/{sample_name}_all_mutations.csv",
+        index=False
     )
     df_mutations.to_pickle(output_folder / f"mutations/{sample_name}_all_mutations.pkl")
+    print(f"{get_time()} Done.")
 
-    print(f"{get_time()} Filtering base qualities...")
-    # do a quality check
-    df_quality_filter = df_mutations.query("base_quality >= @quality_filter")
+    print(f"{get_time()} Filtering poor quality base mutations...")
+    df_quality_filter = revert_poor_quality(df_mutations, quality_filter=quality_filter)
     df_quality_filter.to_csv(
         output_folder
-        / f"mutations/quality_filtered/{sample_name}_filtered_mutations.tsv",
-        index=False,
-        sep="\t",
+        / f"mutations/quality_filtered/{sample_name}_filtered_mutations.csv",
+        index=False
     )
     df_quality_filter.to_pickle(
         output_folder
         / f"mutations/quality_filtered/{sample_name}_filtered_mutations.pkl"
     )
-    print(f"{get_time()} Done")
+    print(f"{get_time()} Done.")
 
     # ! analysis performed on prefiltered data
-    print(f"{get_time()} Calculating lengths of mapped query sequences...")
+    print(f"{get_time()} Calculating lengths of all mapped and filtered query sequences...")
     df_read_lengths = (
         df_quality_filter[["read_id", "query_seq"]]
         .drop_duplicates("read_id", keep="first")
@@ -166,9 +170,8 @@ def main() -> None:
     df_read_lengths.name = sample_name
     df_read_lengths.to_csv(
         output_folder
-        / f"mutations/quality_filtered/seq_lengths/{sample_name}_filtered_seq_lengths.tsv",
-        index=False,
-        sep="\t",
+        / f"mutations/quality_filtered/seq_lengths/{sample_name}_filtered_seq_lengths.csv",
+        index=False
     )
     df_read_lengths.to_pickle(
         output_folder
@@ -176,22 +179,35 @@ def main() -> None:
     )
     print(f"{get_time()} Done")
 
-    print(f"{get_time()} Calculating mutation counts...")
-    print(f"Number of mutations found: {df_mutations.shape[0]:,}")
+    print(f"{get_time()} Calculating base mutation counts...")
+    print(f"Number of base mutations found in whole plasmid: {df_mutations.shape[0]:,}")
     print(
-        f"{df_quality_filter.shape[0]:,} ({df_quality_filter.shape[0] / df_mutations.shape[0]:.2%}) of all nucleotide mutations found passed with quality scores >= {quality_filter}"
+        f"{df_quality_filter.shape[0]:,} ({df_quality_filter.shape[0] / df_mutations.shape[0]:.2%}) of all mutations in whole plasmid found passed with quality scores >= {quality_filter}"
     )
-    df_counts, num_singles, num_multiples = count_mutations(df_quality_filter, gene)
+    df_mutations_cds = df_mutations.dropna(subset="ref_codon")
+    df_quality_filter_cds = df_quality_filter.dropna(subset="ref_codon")
+    print(f"Number of base mutations found in CDS region: {df_mutations_cds.shape[0]:,}")
+    print(
+        f"{df_quality_filter_cds.shape[0]:,} ({df_quality_filter_cds.shape[0] / df_mutations_cds.shape[0]:.2%}) of all mutations in CDS region found passed with quality scores >= {quality_filter}"
+    )
+
+    print(f"{get_time()} Calculating amino acid mutation counts after quality filtering...")
+    df_mutation_counts, num_mutation_singles, num_mutation_multiples = count_mutations(df_quality_filter_cds, gene)
+    print(f"Number of sequences with one amino acid mutation in CDS passing quality check: {num_mutation_singles:,}")
+    print(f"Number of sequences with multiple amino acid mutations in CDS passing quality check: {num_mutation_multiples:,}")
+
+    df_wildtype_counts = count_wildtype(df_wildtypes, gene)
+    df_mutation_counts = df_mutation_counts.add(df_wildtype_counts)
 
     with open(
-        output_folder / "mutations/quality_filtered/multiple_mutants.tsv",
+        output_folder / "mutations/quality_filtered/multiple_mutants.csv",
         "a+",
         encoding="utf-8",
     ) as f:
-        f.write(f"{sample_name}\t{num_singles}\t{num_multiples}\n")
+        f.write(f"{sample_name},{num_mutation_singles},{num_mutation_multiples}\n")
 
-    df_counts.to_csv(output_folder / f"counts/{sample_name}_counts.tsv", sep="\t")
-    df_counts.to_pickle(output_folder / f"counts/{sample_name}_counts.pkl")
+    df_mutation_counts.to_csv(output_folder / f"counts/{sample_name}_counts.csv")
+    df_mutation_counts.to_pickle(output_folder / f"counts/{sample_name}_counts.pkl")
     print(f"{get_time()} Done")
 
     total_runtime = round(time.time() - start_time, 3)

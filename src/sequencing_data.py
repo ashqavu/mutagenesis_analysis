@@ -27,7 +27,8 @@ from utils.seq_data_utils import heatmap_masks
 
 
 class SequencingData:
-    r"""A class created to compile fitness data about each sequencing dataset.
+    """
+    A class created to compile fitness data about each sequencing dataset.
 
     Parameters
     ---------
@@ -151,13 +152,13 @@ class SequencingData:
         try:
             next(glob.iglob((datafolder / filetype).as_posix()))
         except StopIteration:
-            filetype = "*.tsv"
+            filetype = "*.csv"
         for sample in sample_list:
             for file in glob.iglob((datafolder / filetype).as_posix()):
                 if sample in file:
                     if filetype == "*.pkl":
                         df = pd.read_pickle(file)
-                    elif filetype == "*.tsv":
+                    elif filetype == "*.csv":
                         # * if dataframe wasn't pickled before saving
                         df = pd.read_table(file, index_col=0)
 
@@ -182,10 +183,10 @@ class SequencingData:
             Dictionary with sample names to total number of reads
         """
 
-        reads_file = Path(inputfolder) / "alignments/total_reads.tsv"
+        reads_file = Path(inputfolder) / "alignments/total_reads.csv"
 
         with open(reads_file, "r", encoding="utf-8") as csvfile:
-            reader = csv.reader(csvfile, delimiter="\t")
+            reader = csv.reader(csvfile)
             total_reads = {row[0]: int(row[1]) for row in reader}
         return total_reads
 
@@ -214,9 +215,7 @@ class SequencingData:
         """
         frequencies = dict.fromkeys(counts)
         for name in frequencies:
-            adjusted_counts = counts[name].add(
-                extinct_add
-            )
+            adjusted_counts = counts[name].add(extinct_add)
             df_freqs = adjusted_counts.divide(total_reads[name])
             df_freqs.name = name
             frequencies[name] = df_freqs
@@ -379,7 +378,9 @@ class SequencingData:
         :math:`log_{10}(\frac{f^i{selected}}{f^i_{unselected}})`
         """
         if self._enrichment is None:
-            print("Either more than one untreated sample found in dataset, cannot calculate enrichment. Reset samples to recalculate.")
+            print(
+                "Either more than one untreated sample or no untreated samples found in dataset, cannot calculate enrichment. Reset samples to recalculate if needed."
+            )
         return self._enrichment
 
     @property
@@ -388,7 +389,9 @@ class SequencingData:
         :math:`e^i - < e^{WT} >`
         """
         if self._fitness is None:
-            print("Either more than one untreated sample found in dataset, cannot calculate enrichment. Reset samples to recalculate.")
+            print(
+                "Either more than one untreated sample or no untreated samples found in dataset, cannot calculate fitness. Reset samples to recalculate if needed."
+            )
         return self._fitness
 
     def get_pairs(self, treatment: str, samples: list) -> tuple[str, str]:
@@ -417,7 +420,6 @@ class SequencingData:
             raise IndexError("Treatment has more than 2 replicates to compare")
         replica_one, replica_two = treatment_pair[0], treatment_pair[1]
         return replica_one, replica_two
-
 
     def match_treated_untreated(self, sample: str) -> str:
         """
@@ -467,7 +469,8 @@ class SequencingData:
             df_counts_sample = counts_dict[sample]
             df_fitness_sample = fitness_dict[sample]
             dfs_filtered[sample] = df_fitness_sample.where(
-                df_counts_sample.ge(read_threshold) | df_counts_untreated.ge(read_threshold)
+                df_counts_sample.ge(read_threshold)
+                | df_counts_untreated.ge(read_threshold)
             )
         return dfs_filtered
 
@@ -554,6 +557,7 @@ class SequencingDataReplicates(SequencingData):
         self._enrichment = self._get_enrichment(self._frequencies)
         self._fitness = self._get_fitness(self._enrichment)
 
+
 class SequencingDataPools(SequencingData):
     """
     Class for pooling counts data and calculating fitness values thereafter
@@ -594,17 +598,23 @@ class SequencingDataPools(SequencingData):
         counts_data = {}
         pooled_counts = {}
         for treatment in self.treatments:
-            treatment_counts = [value for key, value in self.counts.items() if treatment in key]
+            treatment_counts = [
+                value for key, value in self.counts.items() if treatment in key
+            ]
             counts_data[treatment] = treatment_counts
         for treatment in self.treatments:
-            pooled_counts_df = reduce(lambda a, b: a.add(b, fill_value=0), counts_data[treatment])
+            pooled_counts_df = reduce(
+                lambda a, b: a.add(b, fill_value=0), counts_data[treatment]
+            )
             pooled_counts[treatment] = pooled_counts_df
         return dict(natsorted(pooled_counts.items()))
 
     def _get_pooled_total_reads(self) -> dict:
         pooled_total_reads = {}
         for treatment in self.treatments:
-            treatment_counts = [value for key, value in self.total_reads.items() if treatment in key]
+            treatment_counts = [
+                value for key, value in self.total_reads.items() if treatment in key
+            ]
             pooled_total_reads[treatment] = sum(treatment_counts)
         return dict(natsorted(pooled_total_reads.items()))
 
@@ -639,6 +649,160 @@ class SequencingDataPools(SequencingData):
             #     df_counts_sample.ge(read_threshold) | df_counts_untreated.ge(read_threshold)
             # )
             dfs_filtered[sample] = df_fitness_sample.where(
-                ~(df_counts_sample.lt(read_threshold) & df_counts_untreated.lt(read_threshold))
+                ~(
+                    df_counts_sample.lt(read_threshold)
+                    & df_counts_untreated.lt(read_threshold)
+                )
             )
         return dfs_filtered
+
+class SequencingDataSublibraries(SequencingData):
+    """
+    Class used to combine results when library is sequenced or treated as
+    multiple sublibraries
+
+    Parameters
+    ---------
+    gene : Gene
+        Gene object from `plasmid_map`
+    inputfolder : str
+        Project folder
+    read_threshold : int, optional
+        Minimum of reads for a fitness value to be included, by default 20
+    extinct_add : int, optional
+        Amount to add to counts when calculating frequencies in order to separate
+        out the extinct mutations, by default 0.001
+    """
+    
+    def __init__(
+        self,
+        gene: Gene,
+        inputfolder: str,
+        read_threshold: int = 20,
+        extinct_add: int = 0.001,
+    ):
+        super().__init__(gene, inputfolder, read_threshold, extinct_add)
+        enrichment_all = {}
+        fitness_all = {}
+        self._sublibrary_pools = self._get_sublibrary_pools(self._samples)
+        self._counts.update(self._combine_tables("counts"))
+        if enrichment_all:
+            self._enrichment = enrichment_all
+            self._enrichment.update(self._combine_tables("enrichment"))
+        if fitness_all:
+            self._fitness = fitness_all
+            self._fitness.update(self._combine_tables("fitness"))
+
+    def _get_sublibrary_pools(self, sample_names: list) -> list:
+        """
+        Determine which sublibraries were pooled given a set of samples named by convention <TREATMENT>56, 78, etc.
+        This is specific to our TEM-1 mutagenesis library and will not be able to be generalized to other datasets
+        Parameters
+        ----------
+        sample_names : list
+            List of sample names from dataset
+        Returns
+        -------
+        list
+            List of pooled groups with numbers as string-types
+        """
+        # * need to strip library numbers in descending order to account for double digit numbers
+        sublibrary_numbers = [
+            n.removeprefix("MAS") for n in self.gene.sublibrary_positions.keys()
+        ][::-1]
+
+        data_pools = []
+        for sample in sample_names:
+            name = sample
+            # * track the numbers per name
+            sample_pool = []
+            for n in sublibrary_numbers:
+                # * collect sublibrary numbers from end of name
+                if name.endswith(n):
+                    # * insert at index 0 to create ascending order
+                    sample_pool.insert(0, n)
+                    name = name.removesuffix(n)
+            if sample_pool not in data_pools:
+                data_pools.append(sample_pool)
+        return data_pools
+
+    def _get_pool_residues(self, pools: list) -> dict:
+        """
+        Retrieve list of covered positions from a list of pooled sublibrary numbers
+        Parameters
+        ----------
+        pools : list
+            List of pooled groups with numbers as string-types
+        Returns
+        -------
+        sublibrary_residues : dict
+            Covered library positions matched to a concatenated string representation of pooled library numbers
+        """
+        pool_residues = {}
+        for pool in pools:
+            sublibrary_names = ["MAS" + s for s in pool]
+            residues = []
+            for name in sublibrary_names:
+                residues += self.gene.sublibrary_positions[name]
+            residues.sort()
+            # * reverse back to 0-index sorting instead of Ambler numbering to match other functions
+            indices = np.searchsorted(
+                self.gene.ambler_numbering, residues
+            ).tolist()
+            pool_residues["".join(pool)] = indices
+        return pool_residues
+
+    def _combine_tables(self, data_name: str) -> dict:
+        """
+        Go through sequencing pools and combine positions into one dataframe (minus signal peptide)
+        Parameters
+        ----------
+        data_name : str
+            Data to combine
+        Returns
+        -------
+        combined_dict : dict
+            Single combined data
+        """
+        if data_name == "fitness":
+            treated = [x for x in self.treatments if "UT" not in x]
+            df_dict = {key: [] for key in treated}
+        elif data_name == "counts":
+            df_dict = {key: [] for key in self.treatments}
+
+        pool_residues = self._get_pool_residues(self.sublibrary_pools)
+        for pool_name, residue_list in pool_residues.items():
+            # * make a copy to not overwrite the original dataset
+            pool_dataset = copy.deepcopy(self)
+            # * reduce samples in dataset
+            pool_dataset.samples = [x for x in self.samples if pool_name in x]
+            if data_name == "enrichment":
+                data = pool_dataset.enrichment
+            elif data_name == "fitness":
+                data = pool_dataset.fitness
+            elif data_name == "counts":
+                data = pool_dataset.counts
+            if data:
+                for name, df in data.items():
+                    if data_name == "counts":
+                        name = re.sub("([^A-Za-z0-9])?\d+$", "", name)
+                    sublibrary_data = df.loc[residue_list]
+                    df_dict[name].append(sublibrary_data)
+        # * iterate back through each treatment and merge the data
+        combined_dict = {}
+        for treatment, df_list in df_dict.items():
+            merged_df = pd.concat(df_list)
+            merged_df = merged_df.reindex(np.arange(len(self.gene.cds_translation)), fill_value=0)
+            combined_dict[treatment] = merged_df
+        return combined_dict
+    
+    @property
+    def sublibrary_pools(self) -> list:
+        """
+        List of pooled groups with numbers as string-types
+
+        Returns
+        -------
+        list
+        """
+        return self._sublibrary_pools

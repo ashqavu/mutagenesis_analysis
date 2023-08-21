@@ -16,7 +16,7 @@ The tools featured in this pipeling include:
 |---|---|
 | job_outputs | `.err` and `.out` logs for each SLURM job |
 | flash_merged | output files from FLASh merging |
-| alignments | bowtie2 alignment files sorted and indexed by SAMtools and `total_reads.tsv` with total reads found after sequence mapping|
+| alignments | bowtie2 alignment files sorted and indexed by SAMtools and `total_reads.csv` with total reads found after sequence mapping|
 | results/counts | `.csv` files for mutation count matrices and `.pkl` pickled forms of DataFrames from the pandas library|
 | results/mutations | `.csv` files with list of all mutations found in data and `.pkl` pickled forms of DataFrames from the pandas library |
 | results/mutations/quality_filtered | `.csv` files with list of all mutations that pass quality score filtering and `.pkl` pickled forms of DataFrames from the pandas library |

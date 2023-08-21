@@ -2,6 +2,7 @@
 """
 Histogram plots generated for mutagenesis studies
 """
+import re
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -10,7 +11,7 @@ import pandas as pd
 import seaborn as sns
 from matplotlib.offsetbox import AnchoredText
 
-from sequencing_data import SequencingData
+from sequencing_data import SequencingData, SequencingDataSublibraries
 from utils.seq_data_utils import heatmap_masks
 from visualization.gaussians import gaussian_drug_1d
 
@@ -56,24 +57,43 @@ def histogram_mutation_counts(  # pylint: disable=too-many-locals
     )
 
     for i, sample in enumerate(counts):
+        if sample in data.treatments:
+            continue
         # ! wild-type mask
         counts_values = counts[sample].mask(wt_mask)
         # ! these indices are specific to the mature TEM-1 protein
         # ! would need to be changed if you used a different gene
         # * drop final stop codon
-        # counts_values = data.counts[sample].loc[23:285].drop(["*", "∅"], axis=1)
-        counts_values = data.counts[sample][:-1].drop(
-            ["*", "∅"], axis=1
-        )  # exclude the stop codon at the end
-        library_size = counts_values.shape[0] * (counts_values.shape[1] - 1)
+        counts_values = data.counts[sample].loc[23:286].drop(["*", "∅"], axis=1)
+        # counts_values = data.counts[sample][:-1].drop(
+        #     ["*", "∅"], axis=1
+        # )  # exclude the stop codon at the end
+        library_size = (counts_values.shape[0] - 1) * (counts_values.shape[1] - 1)
         num_missing = counts_values.lt(read_threshold).sum().sum()
+
+        if isinstance(data, SequencingDataSublibraries):
+            sublibrary_pools = data._get_sublibrary_pools([sample])
+            pool_residues = data._get_pool_residues(sublibrary_pools)
+            pooled_sublibrary_coverage = pool_residues[sample.lstrip("MAS")] # ! stop-gap solution
+            library_slice = counts_values.loc[pooled_sublibrary_coverage]
+            if "14" in sample:
+                library_size = (library_slice.shape[0] - 1) * (library_slice.shape[1] - 1)
+            library_size = library_slice.shape[0] * (library_slice.shape[1] - 1)
+            num_missing = library_slice.lt(read_threshold).sum().sum()
+
         pct_missing = num_missing / library_size
 
         # * all counts are included in histogram and determining mean number of reads
-        mean = np.nanmean(counts_values)
-        log_values = counts_values.where(
-            counts_values.lt(1), lambda x: np.log10(x + 1)
-        ).values.flatten()
+        if isinstance(data, SequencingDataSublibraries) and re.search(r"\d+", sample):
+            mean = np.nanmean(library_slice)
+            log_values = library_slice.where(
+                library_slice.lt(1), lambda x: np.log10(x + 1)
+            ).values.flatten()
+        else:
+            mean = np.nanmean(counts_values)
+            log_values = counts_values.where(
+                counts_values.lt(1), lambda x: np.log10(x + 1)
+            ).values.flatten()        
 
         ax = axes.flat[i]
         sns.histplot(
@@ -92,6 +112,8 @@ def histogram_mutation_counts(  # pylint: disable=too-many-locals
         ax.set_title(sample, fontsize=12, fontweight="bold")
 
         text_mean = f"below threshold (min. {read_threshold}): {num_missing} ({pct_missing:.2%})\nmean of all: {round(mean, 3)}"
+        if isinstance(data, SequencingDataSublibraries):
+            text_mean = f"below threshold (min. {read_threshold}): {num_missing} ({pct_missing:.2%})\nmean of all: {round(mean, 3)}\nsublibrary size: {library_size}"
         annot_box = AnchoredText(
             text_mean,
             loc="upper right",
@@ -131,7 +153,7 @@ def histogram_fitness_wrapper(
     sample = df_fitness.name
 
     # ! TEM-1 mat peptide
-    # df_fitness = df_fitness.loc[23:285]
+    df_fitness = df_fitness.loc[23:285]
     # * missense mutations
     # values_missense = df_fitness.drop(["*", "∅"], axis=1).values.flatten()
     # * synonymous mutants
@@ -277,10 +299,8 @@ def histogram_fitness_draw(
         fig_labels = labels[:5]
     fig_dfe_all.legend(
         fig_labels,
-        loc="center left",
-        bbox_to_anchor=(1, 0.5),
+        loc="outside center right",
         ncol=1,
-        bbox_transform=fig_dfe_all.transFigure,
         frameon=False,
     )
     fig_dfe_all.supxlabel("distribution of fitness effects", fontweight="heavy")

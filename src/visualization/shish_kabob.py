@@ -9,12 +9,14 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.patches import Rectangle
+from matplotlib import cm
 
 from fitness_analysis import significance_sigma_dfs_1d, significance_sigma_dfs_2d
 from sequencing_data import SequencingData
-from visualization.gaussians import gaussian_drug_2d, gaussian_drug_1d
-from visualization.histograms import histogram_fitness_wrapper
+from multimodal_gaussian import gaussian_mixture_hist
 from utils.seq_data_utils import heatmap_masks
+from visualization.gaussians import gaussian_drug_1d, gaussian_drug_2d
+from visualization.histograms import histogram_fitness_wrapper
 
 
 def shish_kabob_drug(
@@ -85,10 +87,14 @@ def shish_kabob_drug(
         df = data.fitness[drug]
 
         (
+            _,
             significant_sensitive_dfs,
             significant_resistant_dfs,
         ) = significance_sigma_dfs_1d(
-            data, read_threshold=read_threshold, sigma_cutoff=sigma_cutoff, use_synonymous=use_synonymous
+            data,
+            read_threshold=read_threshold,
+            sigma_cutoff=sigma_cutoff,
+            use_synonymous=use_synonymous,
         )
     significant_sensitive = significant_sensitive_dfs[drug]
     significant_resistant = significant_resistant_dfs[drug]
@@ -101,7 +107,9 @@ def shish_kabob_drug(
         significant_sensitive_treatment = significant_sensitive_dfs[treatment]
         significant_resistant_treatment = significant_resistant_dfs[treatment]
         if resistance_only:
-            significant_positions_treatment = significant_resistant_treatment.drop("*", axis=1).sum(axis=1) > 0
+            significant_positions_treatment = (
+                significant_resistant_treatment.drop("*", axis=1).sum(axis=1) > 0
+            )
         else:
             significant_positions_treatment = (
                 significant_sensitive_treatment.drop("*", axis=1)
@@ -111,11 +119,13 @@ def shish_kabob_drug(
             significant_positions_treatment
         ].index
         significant_positions_all_treatments.extend(significant_positions_treatment)
-    significant_positions_all_treatments = list(set(significant_positions_all_treatments))
+    significant_positions_all_treatments = sorted(
+        list(set(significant_positions_all_treatments))
+    )
 
     # * get residue positions with significant mutations
     if resistance_only:
-        significant_positions = significant_resistant.drop("*", axis=1).sum(axis=1) > 0        
+        significant_positions = significant_resistant.drop("*", axis=1).sum(axis=1) > 0
     else:
         significant_positions = (
             significant_sensitive.drop("*", axis=1)
@@ -128,7 +138,11 @@ def shish_kabob_drug(
         df_masked = df.where(significant_resistant)
     else:
         df_masked = df.where(significant_resistant | significant_sensitive)
-    df_masked = pd.DataFrame(index=sorted(significant_positions_all_treatments), columns=df.columns, dtype="float")
+    df_masked = pd.DataFrame(
+        index=sorted(significant_positions_all_treatments),
+        columns=df.columns,
+        dtype="float",
+    )
     for position in significant_positions:
         df_masked.loc[position] = df.loc[position]
     df_masked = df_masked.drop("∅", axis=1)
@@ -161,7 +175,9 @@ def shish_kabob_drug(
             ax.set_xticks([])
             # * add wild-type notations
             # get reference residues
-            ref_aas = np.take(gene.cds_translation, significant_positions_all_treatments)
+            ref_aas = np.take(
+                gene.cds_translation, significant_positions_all_treatments
+            )
             # iterate over amino acid options (y-axis)
             for y, residue in enumerate(ref_aas):
                 # determine x position for text box
@@ -233,7 +249,9 @@ def shish_kabob_drug(
             ax.set_yticks([])
             # * add wild-type notations
             # get reference residues
-            ref_aas = np.take(gene.cds_translation, significant_positions_all_treatments)
+            ref_aas = np.take(
+                gene.cds_translation, significant_positions_all_treatments
+            )
             # iterate in the x-direction (significant positions)
             for x, residue in enumerate(ref_aas):
                 # determine y-coord for text box
@@ -292,7 +310,7 @@ def shish_kabob_draw(
     xlim: tuple[float, float] = (-2.5, 2.5),
     ylim: tuple[float, float] = (-2.5, 2.5),
     resistance_only: bool = True,
-    use_synonymous: bool = True
+    use_synonymous: bool = True,
 ) -> matplotlib.axes.Axes:
     """
     Draw shish kabob plots and corresponding gaussian scatter plots for all
@@ -414,8 +432,23 @@ def shish_kabob_draw(
                 df = df.mask(wt_mask)
                 df.name = drug
                 values_fitness = df.values
-                histogram_fitness_wrapper(df, bins=bins, ax=ax_gauss)
-                gaussian_drug_1d(df, ax_gauss, sigma_cutoff=sigma_cutoff, use_synonymous=use_synonymous)
+                if use_synonymous:
+                    histogram_fitness_wrapper(df, bins=bins, ax=ax_gauss)
+                else:
+                    _, model = gaussian_mixture_hist(
+                        data,
+                        drug,
+                        sigma_cutoff=sigma_cutoff,
+                        all_peaks=False,
+                        ax=ax_gauss,
+                        n_components=3,
+                    )
+                gaussian_drug_1d(
+                    df,
+                    ax_gauss,
+                    sigma_cutoff=sigma_cutoff,
+                    use_synonymous=use_synonymous,
+                )
                 ax_gauss.get_legend().remove()
                 ax_gauss.set_xlabel("")
 
@@ -436,5 +469,38 @@ def shish_kabob_draw(
                 fig.dpi_scale_trans.inverted()
             ).height * (i + 1)
             fig.set_figheight(adjusted_height)
+
+    # * add colorbar
+    cbar = plt.colorbar(
+        ax_shish.collections[0],
+        location="bottom",
+        ax=fig.axes,
+        anchor="NW",
+        panchor="NW",
+        pad=0,
+        fraction=0.1,
+        shrink=0.3,
+    )
+    cbar.ax.spines["outline"].set_lw(0.4)
+    cbar.ax.tick_params(right=False, left=False, labelsize="x-small", length=0, pad=3)
+
+    # * add legend for histogram
+    handles_gauss, labels_gauss = ax_gauss.get_legend_handles_labels()
+    fig_labels_gauss = labels_gauss[:3]
+    fig_handles_gauss = handles_gauss[:3]
+    if gaussian == "1D" and use_synonymous:
+        fig_labels_gauss = labels_gauss[:5]
+        fig_handles_gauss = handles_gauss[:5]
+    elif gaussian == "1D" and not use_synonymous:
+        fig_labels_gauss = labels_gauss[:7]
+        fig_handles_gauss = handles_gauss[:7]
+    fig.legend(
+        fig_handles_gauss,
+        fig_labels_gauss,
+        loc="outside center right",
+        ncol=1,
+        frameon=False,
+        fontsize="x-small",
+    )
 
     return fig

@@ -200,8 +200,10 @@ class TEM1_gene(Gene):
             "MAS14",
         ]
 
-        # amino acid positions covered by each sublibrary
-        # e.g. MAS5 covers positions 26-51 in the gene
+        # * amino acid positions covered by each sublibrary
+        # * e.g. MAS5 covers positions 26-51 in the gene
+
+        # * ambler numbering
         MAS5 = list(range(26, 52))
         MAS6 = list(range(52, 79))
         MAS7 = list(range(79, 105))
@@ -212,6 +214,7 @@ class TEM1_gene(Gene):
         MAS12 = list(range(210, 237))
         MAS13 = list(range(237, 239)) + list(range(240, 253)) + list(range(254, 265))
         MAS14 = list(range(265, 292))
+        
 
         return dict(
             zip(

@@ -75,7 +75,7 @@ def drug_pair(
         drug1_df = pd.concat([df1_x, df1_y]).groupby(level=0, axis=0).agg(np.mean)
         drug2_df = pd.concat([df2_x, df2_y]).groupby(level=0, axis=0).agg(np.mean)
 
-        significant_sensitive_dfs, significant_resistant_dfs = significance_sigma_dfs_2d(
+        _, significant_sensitive_dfs, significant_resistant_dfs = significance_sigma_dfs_2d(
             data, read_threshold=read_threshold, sigma_cutoff=sigma_cutoff
         )
 
@@ -83,7 +83,7 @@ def drug_pair(
         drug1_df = fitness_filtered_dfs[drug1].mask(wt_mask)
         drug2_df = fitness_filtered_dfs[drug2].mask(wt_mask)
 
-        significant_sensitive_dfs, significant_resistant_dfs = significance_sigma_dfs_1d(
+        _, significant_sensitive_dfs, significant_resistant_dfs = significance_sigma_dfs_1d(
             data, read_threshold=read_threshold, sigma_cutoff=sigma_cutoff, use_synonymous=use_synonymous
         )
     drug1_significant_sensitive = significant_sensitive_dfs[drug1]

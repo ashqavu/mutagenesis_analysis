@@ -233,6 +233,7 @@ def gaussian_drug_1d(
         linestyle="dashed",
         color="blue",
         zorder=100,
+        lw=1,
     )
     ax.axvline(
         right_bound,
@@ -240,6 +241,7 @@ def gaussian_drug_1d(
         linestyle="dashed",
         color="red",
         zorder=100,
+        lw=1,
     )
     # ax.set_xlabel("")
     ax.legend()

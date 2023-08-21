@@ -5,6 +5,7 @@ Heatmap plots generated for mutagenesis studies
 
 import matplotlib
 import matplotlib.pyplot as plt
+from natsort import natsort_keygen
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -199,7 +200,7 @@ def heatmap_draw(
     data: SequencingData,
     dataset: str,
     gene: Gene,
-    read_threshold: int = 20,
+    read_threshold: int = 1,
     vmin: float = -2.0,
     vmax: float = 2.0,
     fitness_cmap: str = "vlag",
@@ -217,7 +218,7 @@ def heatmap_draw(
     gene : Gene
         Gene object that provides residue numbering
     read_threshold : int, optional
-        Minimum number of reads for fitness value to be considered valid, by default 20
+        Minimum number of reads for fitness value to be considered valid, by default 1
     vmin : float, optional
         For fitness data, vmin parameter passed to sns.heatmap, by default -2.0
     vmax : float, optional
@@ -249,7 +250,7 @@ def heatmap_draw(
             "df_dict": fitness_dict,
             "num_columns": len(fitness_dict),
             "num_rows": 1,
-            "suptitle": "Fitness values",
+            "suptitle": f"Fitness values (min. reads = {read_threshold})",
         }
         if dataset == "fitness":
             df_dict, num_columns, num_rows, suptitle = params_fitness.values()
@@ -273,9 +274,9 @@ def heatmap_draw(
 
     # * plot each data one by one
     if dataset == "counts":
-        sorted_samples = sorted(counts_dict)
+        sorted_samples = sorted(counts_dict, key=natsort_keygen())
     elif dataset == "fitness":
-        sorted_samples = sorted(fitness_dict)
+        sorted_samples = sorted(fitness_dict, key=natsort_keygen())
     for i, sample in enumerate(sorted_samples):
         # * function-provided styling for heatmaps
         if dataset == "counts":
@@ -311,19 +312,19 @@ def heatmap_draw(
         # * re-size Figure down to height of all subplots combined after plotting
         height = 0
         for ax in fig.axes:
-            ax.tick_params(labelleft=True)
+            ax.tick_params(labelleft=True, labeltop=True)
             height += (
                 ax.get_tightbbox().transformed(fig.dpi_scale_trans.inverted()).height
             )
-        fig.axes[0].tick_params(labeltop=True)
+        # fig.axes[0].tick_params(labeltop=True)
         fig.set_figheight(height + 1)
         # * adjust subplot spacing
         pad = fig.get_layout_engine().get()["hspace"] / 2
 
     elif orientation == "vertical":
         for ax in fig.axes:
-            ax.tick_params(labelbottom=True)
-        fig.axes[0].tick_params(labelleft=True)
+            ax.tick_params(labelbottom=True, labelleft=True)
+        # fig.axes[0].tick_params(labelleft=True)
         # * re-size Figure down
         fig.set_figheight(fig.get_tightbbox().height)
         # * adjust sutplob spacing

@@ -341,6 +341,7 @@ def significance_sigma_mutations_2d(
             list_all_fitness.append(fitness_entry)
 
     df_all_fitness_sigma = pd.DataFrame(list_all_fitness)
+    df_all_fitness_sigma["sigma_cutoff"] = sigma_cutoff
     rel_fitness_1 = df_all_fitness_sigma["rel_fitness_1"]
     rel_fitness_2 = df_all_fitness_sigma["rel_fitness_2"]
     # make sure both replicates meet noise threshold requirements
@@ -441,8 +442,9 @@ def gaussian_significance_1d(
 
     df_significant_sensitive = df.applymap(is_significant_sensitive)
     df_significant_resistant = df.applymap(is_significant_resistant)
+    fitness_cutoff = mu + sigma_cutoff * std
 
-    return df_significant_sensitive, df_significant_resistant
+    return fitness_cutoff, df_significant_sensitive, df_significant_resistant
 
 
 def significance_sigma_dfs_1d(
@@ -486,12 +488,12 @@ def significance_sigma_dfs_1d(
     for drug in drugs:
         df = dfs_filtered[drug].mask(wt_mask)
 
-        significant_sensitive, significant_resistant = gaussian_significance_1d(
+        fitness_cutoff, significant_sensitive, significant_resistant = gaussian_significance_1d(
             df, sigma_cutoff=sigma_cutoff, use_synonymous=use_synonymous
         )
         significant_sensitive_dfs[drug] = significant_sensitive
         significant_resistant_dfs[drug] = significant_resistant
-    return significant_sensitive_dfs, significant_resistant_dfs
+    return fitness_cutoff, significant_sensitive_dfs, significant_resistant_dfs
 
 
 def significance_sigma_mutations_1d(
@@ -524,7 +526,7 @@ def significance_sigma_mutations_1d(
     fitness_dict = data.fitness
     cds_translation = gene.cds_translation
     drugs_all = sorted(drug for drug in data.treatments if "UT" not in drug)
-    significant_sensitive_dfs, significant_resistant_dfs = significance_sigma_dfs_1d(
+    fitness_cutoff, significant_sensitive_dfs, significant_resistant_dfs = significance_sigma_dfs_1d(
         data,
         read_threshold=read_threshold,
         sigma_cutoff=sigma_cutoff,
@@ -565,6 +567,8 @@ def significance_sigma_mutations_1d(
                 list_all_fitness.append(fitness_entry)
 
     df_all_fitness_sigma = pd.DataFrame(list_all_fitness)
+    df_all_fitness_sigma["sigma_cutoff"] = sigma_cutoff
+    df_all_fitness_sigma["fitness_cutoff"] = fitness_cutoff
     return df_all_fitness_sigma
 
 

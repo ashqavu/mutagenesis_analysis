@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.patches import Rectangle
-from matplotlib import cm
 
 from fitness_analysis import significance_sigma_dfs_1d, significance_sigma_dfs_2d
 from sequencing_data import SequencingData

@@ -7,12 +7,18 @@ Welcome to Deep mutational scanning for fitness landscapes's documentation!
 ===========================================================================
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
    :caption: Contents:
 
    plasmid_map
 
    sequence_mapping
+
+   fitness_analysis
+
+   visualization
+
+   utils
 
 Indices and tables
 ==================

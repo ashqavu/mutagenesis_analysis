@@ -9,7 +9,7 @@ import numpy as np
 from plasmid_map import Gene
 from utils.seq_data_utils import heatmap_masks
 
-def respine(ax: matplotlib.axes) -> None:
+def respine(ax: matplotlib.axes.Axes) -> None:
     """
     Set the edges of the axes to be solid gray
 

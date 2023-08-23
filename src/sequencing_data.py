@@ -447,7 +447,7 @@ class SequencingData:
     ) -> dict:
         """
         Takes DataFrames for treated sample and returns a new DataFrame with cells
-        with untreated counts under the minimum read threshold filtered out
+        with untreated or treated counts under the minimum read threshold filtered out
 
         Parameters
         ----------
@@ -610,6 +610,7 @@ class SequencingDataPools(SequencingData):
         return dict(natsorted(pooled_counts.items()))
 
     def _get_pooled_total_reads(self) -> dict:
+        # TODO: documentation
         pooled_total_reads = {}
         for treatment in self.treatments:
             treatment_counts = [

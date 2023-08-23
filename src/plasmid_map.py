@@ -214,7 +214,7 @@ class TEM1_gene(Gene):
         MAS12 = list(range(210, 237))
         MAS13 = list(range(237, 239)) + list(range(240, 253)) + list(range(254, 265))
         MAS14 = list(range(265, 292))
-        
+
 
         return dict(
             zip(

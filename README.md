@@ -25,13 +25,13 @@ The tools featured in this pipeling include:
 ## Usage
 ### Quick Start
 ```
-bash start_slurm.sh <INPUT_FOLDER> <GENE_NAME>
+bash start_slurm.sh -i <INPUT_FOLDER> -g <GENE_NAME> -r <GENBANK_FILE_PATH> -x <BOWTIE_INDEX_DIRECTORY> -f <FLASH_PATH>
 ```
 ### start_slurm.sh
 The `start_slurm.sh` is a bash script written for the SLURM job scheduler used by UTSW's BioHPC and takes advantage of job arrays to initiate parallel processing of the samples, and is intended to be the only script run by the user. Given a `raw_data` folder in the project folder, the script will generate a `SampleNames.txt` file from the Illumina filenames and then launch a SLURM script in the format
 
 ```
-sbatch --array <ARRAY_IDS> mutation_scanning.sh <INPUTFOLDER> <GENE_NAME>
+sbatch --array <ARRAY_IDS> mutation_scanning.sh
 ```
 
 ### mutation_scanning.sh
